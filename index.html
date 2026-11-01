@@ -1,0 +1,859 @@
+<!doctype html>
+<html lang="ro">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>România 2028</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="description" content="Simulator de reorganizare administrativă a celor 3.180 de UAT din România, pe baza execuției bugetare 2025 și a Recensământului 2021.">
+<meta property="og:title" content="România 2028 – Simulator de reorganizare administrativă">
+<meta property="og:description" content="3.180 de primării. Cât se economisește la personal și funcționare și cât își pot acoperi comunele din venituri proprii, județ cu județ.">
+<meta property="og:locale" content="ro_RO">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://petreadorinsilviu.github.io/Romania-Reforma/">
+<meta property="og:image" content="https://petreadorinsilviu.github.io/Romania-Reforma/preview.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://petreadorinsilviu.github.io/Romania-Reforma/preview.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Literata:opsz,wght@7..72,500;7..72,700&family=Public+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Leaflet 1.9.4 – stilurile minime necesare (foaia de stil a bibliotecii nu se poate încărca din CDN) */
+.leaflet-pane,.leaflet-tile,.leaflet-marker-icon,.leaflet-marker-shadow,.leaflet-tile-container,.leaflet-pane>svg,.leaflet-pane>canvas,.leaflet-zoom-box,.leaflet-image-layer,.leaflet-layer{position:absolute;left:0;top:0}
+.leaflet-container{overflow:hidden;-webkit-tap-highlight-color:transparent;outline-offset:1px;touch-action:none}
+.leaflet-tile,.leaflet-marker-icon,.leaflet-marker-shadow{user-select:none}
+.leaflet-tile{filter:inherit;visibility:hidden}.leaflet-tile-loaded{visibility:inherit}
+.leaflet-container img.leaflet-tile{max-width:none!important;max-height:none!important;mix-blend-mode:plus-lighter}
+.leaflet-pane{z-index:400}.leaflet-tile-pane{z-index:200}.leaflet-overlay-pane{z-index:400}.leaflet-shadow-pane{z-index:500}.leaflet-marker-pane{z-index:600}.leaflet-tooltip-pane{z-index:650}.leaflet-popup-pane{z-index:700}
+.leaflet-map-pane canvas{z-index:100}.leaflet-map-pane svg{z-index:200}
+.leaflet-control{position:relative;z-index:800;pointer-events:visiblePainted;pointer-events:auto;float:left;clear:both}
+.leaflet-top,.leaflet-bottom{position:absolute;z-index:1000;pointer-events:none}
+.leaflet-top{top:0}.leaflet-right{right:0}.leaflet-bottom{bottom:0}.leaflet-left{left:0}
+.leaflet-right .leaflet-control{float:right;margin-right:10px}.leaflet-top .leaflet-control{margin-top:10px}.leaflet-bottom .leaflet-control{margin-bottom:10px}.leaflet-left .leaflet-control{margin-left:10px}
+.leaflet-zoom-animated{transform-origin:0 0}
+.leaflet-zoom-anim .leaflet-zoom-animated{transition:transform .25s cubic-bezier(0,0,.25,1)}
+.leaflet-zoom-anim .leaflet-tile,.leaflet-pan-anim .leaflet-tile{transition:none}
+.leaflet-interactive{cursor:pointer}.leaflet-grab{cursor:grab}.leaflet-dragging .leaflet-grab{cursor:move}
+.leaflet-bar{box-shadow:0 1px 5px rgba(0,0,0,.4);border-radius:4px}
+.leaflet-bar a{background:var(--panel);color:var(--ink);border-bottom:1px solid var(--line);width:30px;height:30px;line-height:30px;display:block;text-align:center;text-decoration:none;font:700 18px/30px var(--f-body)}
+.leaflet-bar a:first-child{border-radius:4px 4px 0 0}.leaflet-bar a:last-child{border-radius:0 0 4px 4px;border-bottom:none}
+.leaflet-control-attribution{background:color-mix(in srgb,var(--panel) 80%,transparent);margin:0;padding:0 5px;font-size:11px;color:var(--muted)}
+.leaflet-control-attribution a{color:var(--accent)}
+.leaflet-tooltip{position:absolute;padding:6px;background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:3px;white-space:nowrap;user-select:none;pointer-events:none;box-shadow:0 1px 3px rgba(0,0,0,.4)}
+.leaflet-tooltip-top:before,.leaflet-tooltip-bottom:before,.leaflet-tooltip-left:before,.leaflet-tooltip-right:before{display:none}
+
+/* Layout: hartă pe toată înălțimea + panou lateral de lucru (pe telefon: hartă sus, panou dedesubt).
+   Aceeași identitate ca „Brăila 2028”: tricolor discret, Literata pentru titluri, Public Sans pentru text, JetBrains Mono pentru cifre. */
+:root{
+  --bg:#f4f5f2; --panel:#ffffff; --ink:#1d2321; --muted:#5d6763; --line:#d9ddd8; --fade:#e8e9e6;
+  --ro-blue:#002b7f; --ro-yellow:#fcd116; --ro-red:#ce1126; --accent:#1f4e8c;
+  --nodata:#c9ccc7; --ok:#2f7d4f; --warn:#b7791f; --bad:#b42318; --hintbg:#fdf3c4;
+  --f-display:"Literata", Georgia, serif;
+  --f-body:"Public Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-mono:"JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){ --bg:#111513; --panel:#181d1b; --ink:#e7ebe8; --muted:#9aa49f; --line:#2c3431; --fade:#232927;
+    --accent:#7fa8e0; --nodata:#3a413e; --hintbg:#3a3418; color-scheme:dark; }
+}
+:root[data-theme="dark"]{ --bg:#111513; --panel:#181d1b; --ink:#e7ebe8; --muted:#9aa49f; --line:#2c3431; --fade:#232927;
+  --accent:#7fa8e0; --nodata:#3a413e; --hintbg:#3a3418; color-scheme:dark; }
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 var(--f-body)}
+.app{display:grid;grid-template-columns:minmax(0,1fr) 440px;height:100%}
+#map{height:100%;min-height:320px;background:var(--bg)}
+aside{display:flex;flex-direction:column;min-width:0;background:var(--panel);border-left:1px solid var(--line);overflow:hidden}
+header{padding-block:18px 12px;padding-left:20px;padding-right:20px;border-bottom:1px solid var(--line)}
+.flag{display:flex;gap:6px;margin-bottom:10px}
+.flag i{display:block;width:34px;height:4px;border-radius:2px}
+.eyebrow{font:600 11px/1.3 var(--f-body);letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+h1{font:700 24px/1.15 var(--f-display);margin:4px 0 0;text-wrap:balance}
+.subtitle{font:500 14px/1.3 var(--f-body);color:var(--muted);margin-top:2px}
+nav{display:flex;gap:4px;padding:10px 12px;border-bottom:1px solid var(--line);overflow-x:auto}
+nav button{flex:0 0 auto;border:1px solid transparent;background:none;color:var(--muted);font:600 13px var(--f-body);padding:7px 12px;border-radius:999px;cursor:pointer}
+nav button[aria-selected="true"]{background:var(--ink);color:var(--panel)}
+nav button:focus-visible,button:focus-visible,select:focus-visible,input:focus-visible,[role=button]:focus-visible,tr:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.body{flex:1;overflow-y:auto;padding-block:16px 28px;padding-left:20px;padding-right:20px;display:flex;flex-direction:column;gap:18px}
+.status{font-size:13px;color:var(--muted);display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--warn);flex:0 0 auto}
+.dot.ok{background:var(--ok)}.dot.bad{background:var(--bad)}
+.kpis{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.kpi{border:1px solid var(--line);border-radius:8px;padding:10px;min-width:0}
+.kpi b{display:block;font:600 16px/1.25 var(--f-mono);font-variant-numeric:tabular-nums;margin-bottom:4px;overflow-wrap:anywhere}
+.kpi span{font-size:12px;color:var(--muted);line-height:1.35}
+h2{font:700 16px/1.3 var(--f-display);margin:0;text-wrap:balance}
+.section{display:flex;flex-direction:column;gap:10px;min-width:0}
+.legend{display:flex;flex-direction:column;gap:6px;font-size:13px}
+.legend div{display:flex;gap:8px;align-items:center}
+.sw{width:14px;height:14px;border-radius:3px;flex:0 0 auto;border:1px solid rgba(0,0,0,.15)}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{font:600 11px var(--f-body);text-transform:uppercase;letter-spacing:.06em;color:var(--muted);text-align:left;padding:6px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--panel);z-index:1}
+td{padding:6px;border-bottom:1px solid var(--line);vertical-align:middle}
+td.n,th.n{text-align:right;font-family:var(--f-mono);font-variant-numeric:tabular-nums;white-space:nowrap}
+tr.sel td{background:color-mix(in srgb,var(--accent) 12%,transparent)}
+tbody tr[data-k],tbody tr[data-cc]{cursor:pointer}
+tbody tr[data-k]:hover td,tbody tr[data-cc]:hover td{background:color-mix(in srgb,var(--ink) 4%,transparent)}
+.tablewrap{overflow-x:auto;max-height:440px;overflow-y:auto;border:1px solid var(--line);border-radius:8px}
+.chip{display:inline-block;font:600 11px var(--f-body);padding:2px 8px;border-radius:999px;white-space:nowrap}
+.chip.k0{background:var(--nodata);color:var(--ink)}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.btn{border:1px solid var(--line);background:var(--panel);color:var(--ink);font:600 13px var(--f-body);padding:8px 12px;border-radius:8px;cursor:pointer}
+.btn.primary{background:var(--ink);color:var(--panel);border-color:var(--ink)}
+.btn.link{border:0;padding:0;background:none;color:var(--accent);font-weight:600;align-self:flex-start}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+label.f{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted)}
+select,input[type=number],input[type=search]{font:500 14px var(--f-body);padding:7px 8px;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--ink);max-width:100%}
+.ccsel{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.ccsel select{font-weight:600;min-width:0;flex:1 1 180px}
+.groups{display:flex;flex-direction:column;gap:8px}
+.group{border:1px solid var(--line);border-radius:8px;padding:10px 12px;display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:4px 10px;align-items:center;cursor:pointer}
+.group.active{border-color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink)}
+.group .sw{width:16px;height:16px}
+.group .name{font-weight:700;min-width:0;overflow-wrap:anywhere}
+.group .meta{grid-column:2/4;font-size:12px;color:var(--muted);min-width:0}
+.group .pop{font:600 14px var(--f-mono);font-variant-numeric:tabular-nums}
+.below{color:var(--bad)}
+table.ind td{padding:5px 8px}
+table.ind td:first-child{color:var(--muted)}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:999px;padding:3px;gap:2px;align-self:flex-start;flex-wrap:wrap}
+.segbtn{border:0;background:none;color:var(--muted);font:600 12px var(--f-body);padding:6px 10px;border-radius:999px;cursor:pointer}
+.segbtn[aria-pressed="true"]{background:var(--ink);color:var(--panel)}
+.lead{display:flex;flex-direction:column;gap:6px}
+.lead .big{font:700 44px/1 var(--f-display);letter-spacing:-.01em;font-variant-numeric:tabular-nums}
+.lead p{margin:0;font-size:15px}
+details.ip{border:1px solid var(--line);border-radius:8px;padding:8px 12px}
+details.ip summary{cursor:pointer;font-weight:600;font-size:13px}
+.ipgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:10px 0}
+.ipgrid input{width:100%}
+.opts{display:flex;flex-direction:column;gap:10px}
+.opt{border:1px solid var(--line);border-radius:8px;padding:12px;display:flex;flex-direction:column;gap:10px}
+.opt.on{border-color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink)}
+.ohead{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;font-size:15px}
+.ogrid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+.ogrid b{display:block;font:600 14px var(--f-mono);font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.ogrid span{font-size:11px;color:var(--muted);line-height:1.3}
+.btn.wide{width:100%;padding:12px;font-size:14px}
+.covleg{font-size:12px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px 12px}
+.covleg .sw{width:16px;height:12px;border-radius:4px;border:0;box-shadow:inset 0 0 0 1px rgba(0,0,0,.08)}
+.seatrow{display:flex;gap:6px;align-items:center;margin:4px 0;color:var(--ink);flex-wrap:wrap}
+.seatsel{font:500 13px var(--f-body);padding:4px 6px}
+.cchart{display:flex;flex-direction:column;gap:7px}
+.cscale{position:relative;height:14px;margin-left:132px;margin-right:46px;font:600 10px var(--f-mono);color:var(--muted)}
+.cscale span{position:absolute;transform:translateX(-50%)}
+.crow{display:grid;grid-template-columns:124px minmax(0,1fr) 40px;gap:8px;align-items:center;cursor:pointer}
+.clab{display:flex;gap:6px;align-items:center;font-size:13px;font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ctrack{position:relative;height:16px;border-radius:4px;background:color-mix(in srgb,var(--ink) 7%,transparent)}
+.ctrack i{position:absolute;top:0;bottom:0;width:1px;background:var(--ink);opacity:.18}
+.ctrack i.c100{opacity:.6;width:2px}
+.cbar{position:absolute;left:0;top:3px;bottom:3px;border-radius:3px;box-shadow:inset 0 0 0 1px rgba(0,0,0,.06)}
+.cnow{position:absolute;top:50%;width:10px;height:10px;margin:-5px 0 0 -5px;border-radius:50%;border:2px solid var(--ink);background:var(--panel)}
+.cval{font:600 13px var(--f-mono);text-align:right;font-variant-numeric:tabular-nums}
+.findings{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px}
+.detail{border:1px solid var(--line);border-radius:8px;padding:12px;display:flex;flex-direction:column;gap:8px}
+.detail .top{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.note{font-size:12px;color:var(--muted)}
+.hint{font-size:13px;background:var(--hintbg);border-radius:8px;padding:8px 10px}
+.mini{display:inline-block;width:56px;height:8px;border-radius:4px;vertical-align:middle;background:color-mix(in srgb,var(--ink) 8%,transparent);position:relative;overflow:hidden}
+.mini span{position:absolute;left:0;top:0;bottom:0;border-radius:4px}
+.leaflet-container{font-family:var(--f-body)}
+.leaflet-tooltip.tt{font:13px/1.45 var(--f-body);max-width:300px;white-space:normal;padding:8px 10px;border-radius:8px}
+.loading{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font:600 14px var(--f-body);color:var(--muted);pointer-events:none;z-index:500}
+.mapwrap{position:relative;min-width:0}
+@media (max-width:520px){ .kpis{grid-template-columns:1fr} .ogrid{grid-template-columns:repeat(2,minmax(0,1fr))} .segbtn{padding:8px 12px;font-size:13px} .lead .big{font-size:36px} }
+@media (max-width:860px){
+  .app{grid-template-columns:1fr;grid-template-rows:55vh auto;height:auto}
+  aside{border-left:0;border-top:1px solid var(--line);overflow:visible}
+  .body{overflow:visible;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+  header{padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;scroll-behavior:auto!important}}
+</style>
+
+</head>
+<body>
+<div class="app">
+  <div class="mapwrap"><div id="map" role="region" aria-label="Harta UAT din România"></div><div class="loading" id="maploading">Se încarcă harta celor 3.181 de UAT…</div></div>
+  <aside>
+    <header>
+      <div class="flag" aria-hidden="true"><i style="background:var(--ro-blue)"></i><i style="background:var(--ro-yellow)"></i><i style="background:var(--ro-red)"></i></div>
+      <div class="eyebrow">Reorganizare administrativă · 3.180 UAT · execuție bugetară 2025</div>
+      <h1>România 2028</h1>
+      <div class="subtitle">Simulator de reorganizare administrativă</div>
+    </header>
+    <nav role="tablist" aria-label="Moduri">
+      <button role="tab" data-mode="summary" aria-selected="true">Propunerea</button>
+      <button role="tab" data-mode="actual" aria-selected="false">Hartă actuală</button>
+      <button role="tab" data-mode="edit" aria-selected="false">Construiește zone</button>
+      <button role="tab" data-mode="auto" aria-selected="false">Propunere automată</button>
+      <button role="tab" data-mode="data" aria-selected="false">Surse</button>
+    </nav>
+    <div class="body" id="panel"><p class="note">Se încarcă datele…</p></div>
+  </aside>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/topojson-client@3.1.0/dist/topojson-client.min.js"></script>
+<script>
+"use strict";
+/* ============================================================
+   1. DATE
+   date/uat_2025.json  – 3.181 UAT: SIRUTA, nume, județ, tip, populație RPL 2021, CIF, suprafață, centru, indicatori financiari 2025
+   date/ro_uat.topojson – contururile UAT (id = SIRUTA)
+   date/scenarii.json   – propunerile automate pe județ și prag de populație
+   Indicatorii financiari (sume în lei, execuție la 31.12.2025, bugetul local, ordonator principal):
+   v   = venituri proprii (art. 5 din Legea 273/2006): cap. 01–03, 05–07, 12, 14–16, 18, 30–31, 33–36 + cote din impozitul pe venit (04.01)
+   pit = cote defalcate din impozitul pe venit (04.01)
+   pa  = cheltuieli de personal (titlul 10) ale autorităților executive (cap. 51.01) – aparatul primăriei
+   pt  = cheltuieli de personal (titlul 10), total
+   f   = secțiunea de funcționare; dev = secțiunea de dezvoltare
+   tvd = sume defalcate din TVA pentru cheltuieli descentralizate (11.02)
+   eq  = sume de echilibrare și repartizate de consiliul județean (04.02, 04.04, 04.05, 11.06)
+   tv  = total venituri; tc = total cheltuieli
+   ============================================================ */
+const BUC = "179132";               // Municipiul București: nu intră în simulare (are sectoare cu bugete proprii)
+let UAT=[], byKey=new Map(), ADJ=new Map(), JUD={}, CCS=[], SCEN={}, TOPO=null, OBJ=null;
+const PALETTE = ["#8fb8e8","#f6c177","#9ed6a5","#f3a59a","#c3a8e6","#86d1cc","#f2b6d2","#c8d68a","#e8b98f","#a9bfd6","#e6a3bd","#b4dcf0","#d9c99a","#a8cdb6"];
+const NCAT = [
+  {k:0,label:"Fără date",hex:"#c9ccc7",ink:"#1d2321"},
+  {k:1,label:"Sub 50% din funcționarea proprie",hex:"#b23a48",ink:"#fff"},
+  {k:2,label:"50–75% din funcționarea proprie",hex:"#f08a7e",ink:"#3d0d0b"},
+  {k:3,label:"75–99% din funcționarea proprie",hex:"#f6c9d4",ink:"#4a1528"},
+  {k:4,label:"Peste 100%: se finanțează singură",hex:"#a9dfb0",ink:"#123d1c"}
+];
+const CAT = [
+  {k:0,label:"Fără date",hex:"#c9ccc7",ink:"#1d2321"},
+  {k:1,label:"Nu acoperă nici aparatul primăriei",hex:"#7a1420",ink:"#fff"},
+  {k:2,label:"Acoperă aparatul primăriei, nu tot personalul",hex:"#b8402f",ink:"#fff"},
+  {k:3,label:"Acoperă tot personalul, nu toată funcționarea",hex:"#e59a6b",ink:"#3a1a0c"},
+  {k:4,label:"Acoperă toată funcționarea",hex:"#f3dcc2",ink:"#3a1a0c"}
+];
+/* Propunerea anterioară pentru Brăila (5 UAT), din simulatorul Brăila 2028 – se încarcă din scenarii.json */
+let PRESET_VECHI_BR = [];
+
+/* ============================================================
+   2. STARE
+   ============================================================ */
+const S = {
+  mode:"summary", metric:"net", colorBy:"cov",
+  cc:null,              // județul afișat în Propunere / Hartă actuală (null = toată țara)
+  wcc:"BR",             // județul de lucru în Construiește zone și Propunere automată
+  sumT:5000, threshold:5000,
+  groupsBy:{},          // {cc:[{id,name,seat,color,members:Set}]}
+  activeGroup:null, selected:null, openGroup:null, appliedSc:{},
+  ip:{}, q:""
+};
+const CAM = 1.0225;
+const IPOTEZE_DEF = {primar:15000, viceprimar:10600, secretar:12000, posturi:3, salariu:9000, consilier:1200, plafon:60, functionare:120000, armonizare:5, colectare:0};
+
+/* ============================================================
+   3. UTILITARE
+   ============================================================ */
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const fmt=x=>isNaN(x)?"–":Math.round(x).toLocaleString("ro-RO");
+function fmtLei(x){ if(isNaN(x)) return "–"; const a=Math.abs(x);
+  if(a>=1e9) return (x/1e9).toLocaleString("ro-RO",{maximumFractionDigits:2})+" mld.";
+  if(a>=1e6) return (x/1e6).toLocaleString("ro-RO",{maximumFractionDigits:1})+" mil.";
+  return Math.round(x).toLocaleString("ro-RO"); }
+function pct(x){ return isNaN(x)||!isFinite(x)?"–":(x*100).toFixed(0)+"%"; }
+function pct1(x){ return isNaN(x)||!isFinite(x)?"–":(x*100).toLocaleString("ro-RO",{minimumFractionDigits:1,maximumFractionDigits:1})+"%"; }
+function norm(s){ return String(s||"").normalize("NFD").replace(/[̀-ͯ]/g,"").toLowerCase().replace(/[^a-z0-9]/g,""); }
+const tipName=t=>t==="M"?"municipiu":t==="O"?"oraș":"comună";
+function save(){ try{ localStorage.setItem("ro2028.v1",JSON.stringify({sumT:S.sumT,threshold:S.threshold,metric:S.metric,colorBy:S.colorBy,wcc:S.wcc,ip:S.ip,appliedSc:S.appliedSc,
+  groupsBy:Object.fromEntries(Object.entries(S.groupsBy).map(([cc,gs])=>[cc,gs.map(g=>({...g,members:[...g.members]}))]))})); }catch(e){} }
+function load(){ try{ const o=JSON.parse(localStorage.getItem("ro2028.v1")||"null"); if(!o) return;
+  for(const k of ["sumT","threshold","metric","colorBy","wcc","appliedSc"]) if(o[k]!=null) S[k]=o[k];
+  if(o.ip) S.ip={...IPOTEZE_DEF,...o.ip};
+  if(o.groupsBy) for(const [cc,gs] of Object.entries(o.groupsBy)) S.groupsBy[cc]=gs.map(g=>({...g,members:new Set(g.members.filter(k=>byKey.has(k)))}));
+  }catch(e){} }
+
+function netRatio(fin){ return fin ? fin.v/(fin.f-fin.tvd) : NaN; }
+function netCat(r){ return isNaN(r)||!isFinite(r)?0 : r<.5?1 : r<.75?2 : r<1?3 : 4; }
+function category(v,pa,pt,f){ return v<pa?1 : v<pt?2 : v<f?3 : 4; }
+function uatCat(u){ return u.fin?category(u.fin.v,u.fin.pa,u.fin.pt,u.fin.f):0; }
+function curCats(){ return S.metric==="net" ? NCAT : CAT; }
+function curCat(u){ return S.metric==="net" ? netCat(netRatio(u.fin)) : uatCat(u); }
+function chip(u){
+  const c=curCats()[curCat(u)]; if(!u.fin) return `<span class="chip k0">fără date</span>`;
+  const label = S.metric==="net" ? ["","sub 50%","50–75%","75–100%","peste 100%"][c.k] : c.label.replace("Acoperă ","").replace("Nu acoperă nici ","nu acoperă ");
+  return `<span class="chip" style="background:${c.hex};color:${c.ink}">${esc(label)}</span>`;
+}
+
+/* ---------- Geografie ---------- */
+function adjOf(k){ return ADJ.get(k)||[]; }
+function contiguous(keys){
+  const ks=[...keys]; if(ks.length<2) return true; const set=new Set(ks), seen=new Set([ks[0]]), q=[ks[0]];
+  while(q.length){ const k=q.pop(); for(const n of adjOf(k)) if(set.has(n)&&!seen.has(n)){ seen.add(n); q.push(n); } }
+  return seen.size===set.size;
+}
+function km(a,b){
+  const A=byKey.get(a).cen, B=byKey.get(b).cen; if(!A||!B) return NaN;
+  const R=6371, r=Math.PI/180, dLat=(B[1]-A[1])*r, dLon=(B[0]-A[0])*r;
+  const h=Math.sin(dLat/2)**2+Math.cos(A[1]*r)*Math.cos(B[1]*r)*Math.sin(dLon/2)**2; return 2*R*Math.asin(Math.sqrt(h));
+}
+/* Reședința: cea propusă (dacă e în grupare); altfel municipiul sau cel mai mare oraș; altfel comuna cea mai centrală. */
+function seatOf(keys,pref){
+  const us=[...keys].map(k=>byKey.get(k)); if(!us.length) return null;
+  if(pref && keys.has(pref)) return pref;
+  const towns=us.filter(u=>u.tip!=="C").sort((a,b)=>b.pop-a.pop); if(towns.length) return towns[0].key;
+  let best=null,bd=Infinity; for(const u of us){ const d=Math.max(...us.map(o=>km(u.key,o.key)||0)); if(d<bd-0.01||(Math.abs(d-bd)<0.01&&u.pop>byKey.get(best).pop)){bd=d;best=u.key;} }
+  return best;
+}
+
+/* ---------- Modelul de economii la comasare (identic cu simulatorul Brăila) ----------
+   Pentru fiecare primărie absorbită (toate, mai puțin reședința):
+   1. dispare stratul de conducere: primar, viceprimar, secretar general + posturi de suport dublate (CAM 2,25% inclus),
+      plafonat la un procent din aparatul acelei primării (ghișeele rămân ca birou local);
+   2. scade numărul total de consilieri locali (art. 112 din Codul administrativ);
+   3. dispar costurile proprii ale unei primării separate (licențe, audit, juridic, autoturism, bancă, IT);
+   4. se scade costul armonizării salariale a personalului preluat.
+   Opțional: creșterea colectării impozitelor și taxelor locale (implicit 0%). */
+function nrConsilieri(p){ for(const [lim,n] of [[1500,9],[3000,11],[5000,13],[10000,15],[20000,17],[50000,19],[100000,21],[200000,23]]) if(p<=lim) return n; return 27; }
+function stratConducere(u){ const I=S.ip; const s=(I.primar+I.viceprimar+I.secretar+I.posturi*I.salariu)*12*CAM; return Math.min(s, I.plafon/100*u.fin.pa); }
+const statCache=new Map();
+function groupStats(keys,seatPref){
+  keys = keys instanceof Set ? keys : new Set(keys);
+  const ck=[...keys].sort().join(",")+"|"+(seatPref||"");
+  if(statCache.has(ck)) return statCache.get(ck);
+  const us=[...keys].map(k=>byKey.get(k)); const pop=us.reduce((s,u)=>s+u.pop,0);
+  const hasFin = us.length>0 && us.every(u=>u.fin);
+  const sum=f=>us.reduce((s,u)=>s+(u.fin?u.fin[f]:0),0);
+  const seat=seatOf(keys,seatPref);
+  let v=NaN,pa=NaN,pt=NaN,f=NaN,econ=0,eP=0,eC=0,eF=0,eA=0,colect=0,consB=0,consA=0;
+  if(hasFin){
+    v=sum("v"); pa=sum("pa"); pt=sum("pt"); f=sum("f");
+    consB=us.reduce((s,u)=>s+nrConsilieri(u.pop),0); consA=us.length>1?nrConsilieri(pop):consB;
+    if(us.length>1){
+      const abs=us.filter(u=>u.key!==seat);
+      eP=abs.reduce((s,u)=>s+stratConducere(u),0);
+      eC=Math.max(0,consB-consA)*S.ip.consilier*12*CAM;
+      eA=S.ip.armonizare/100*(abs.reduce((s,u)=>s+u.fin.pa,0)-eP);
+      eF=S.ip.functionare*abs.length;
+      econ=eP+eC+eF-eA;
+      colect=S.ip.colectare/100*us.reduce((s,u)=>s+(u.fin.v-u.fin.pit),0);
+      v+=colect; pa+=-eP-eC+eA; pt+=-eP-eC+eA; f-=econ;
+    }
+  }
+  const area=us.reduce((s,u)=>s+(u.area||0),0);
+  const tvd=hasFin?sum("tvd"):NaN;
+  const dmax=seat&&us.length>1?Math.max(...us.map(u=>km(u.key,seat)||0)):0;
+  const r={pop,n:us.length,hasFin,v,pa,pt,f,econ,eP,eC,eF,eA,colect,consB,consA,seat,dmax,contig:contiguous(keys),
+    cover:hasFin? v/f : NaN, pit:hasFin?sum("pit"):NaN, eq:hasFin?sum("eq"):NaN, dev:hasFin?sum("dev"):NaN, tv:hasFin?sum("tv"):NaN, tc:hasFin?sum("tc"):NaN,
+    tvd, area, deficit:hasFin? f-v : NaN, fNet:hasFin? f-tvd : NaN, coverNet:hasFin? v/(f-tvd) : NaN,
+    coverNetNow:hasFin? sum("v")/(sum("f")-tvd) : NaN};
+  statCache.set(ck,r); return r;
+}
+function membersSeatFirst(keys,seat){ const us=[...keys].map(k=>byKey.get(k)).sort((a,b)=>b.pop-a.pop); const i=us.findIndex(u=>u.key===seat); if(i>0) us.unshift(us.splice(i,1)[0]); return us; }
+function namesHtml(keys,seat){ return membersSeatFirst(keys,seat).map((u,i)=>i===0&&keys.size>1?`<b>★ ${esc(u.name)}</b>`:esc(u.name)).join(", "); }
+const byCovAsc=(a,b)=>(isNaN(a.coverNet)?9:a.coverNet)-(isNaN(b.coverNet)?9:b.coverNet);
+function gStats(g){ return groupStats(g.members,g.seat); }
+function unitsOf(cc){ return UAT.filter(u=>u.cc===cc); }
+function groups(){ return S.groupsBy[S.wcc]||(S.groupsBy[S.wcc]=[]); }
+function groupOf(key){ const u=byKey.get(key); return (S.groupsBy[u.cc]||[]).find(g=>g.members.has(key)); }
+
+/* ---------- Scenarii ---------- */
+const PRAGURI=[3000,5000,7500,10000,15000];
+function scenList(cc,T){ return (SCEN[cc]||[]).filter(s=>s.T===T).sort((a,b)=>b.K-a.K); }
+function scenFor(cc,T){ const l=scenList(cc,T); return l.length?l[0]:null; }
+function mkZones(cc,zones){
+  return zones.map(z=>({seat:z.seat,members:new Set(z.members.filter(k=>byKey.has(k)))}))
+    .filter(z=>z.members.size)
+    .map(z=>({...z,pop:[...z.members].reduce((s,k)=>s+byKey.get(k).pop,0)}))
+    .sort((a,b)=>b.pop-a.pop)
+    .map((z,i)=>({id:cc+"z"+i,name:byKey.get(seatOf(z.members,z.seat)).name,seat:z.seat,color:PALETTE[i%PALETTE.length],members:z.members}));
+}
+/* zonele unui județ la pragul T: varianta cu cele mai multe zone; județele fără scenariu rămân cu UAT-urile actuale */
+const zoneCache=new Map();
+function countyZones(cc,T){
+  const ck=cc+"|"+T; if(zoneCache.has(ck)) return zoneCache.get(ck);
+  const sc=scenFor(cc,T);
+  const z = sc ? mkZones(cc,sc.zones) : unitsOf(cc).map((u,i)=>({id:cc+"s"+i,name:u.name,seat:u.key,color:PALETTE[i%PALETTE.length],members:new Set([u.key])}));
+  zoneCache.set(ck,z); return z;
+}
+function nationalZones(T){ return CCS.flatMap(cc=>countyZones(cc,T)); }
+
+function scenarioTotals(zones){
+  const st=zones.map(z=>groupStats(z.members,z.seat));
+  const s=k=>st.reduce((a,x)=>a+x[k],0);
+  /* zonele rurale = cele fără municipiu */
+  const ruralIdx=st.map((x,i)=>x.hasFin&&![...zones[i].members].some(k=>byKey.get(k).tip==="M"));
+  /* dacă toate zonele au un municipiu (praguri mari), indicatorii „în afara municipiilor” se calculează pe toate zonele */
+  const rural=ruralIdx.some(Boolean)?st.filter((x,i)=>ruralIdx[i]):st.filter(x=>x.hasFin);
+  let wd=0, ruralPop=0;
+  zones.forEach((z,i)=>{ const seat=st[i].seat; for(const k of z.members){ const u=byKey.get(k); if(u.tip==="M") continue; wd+=u.pop*(z.members.size>1?(km(k,seat)||0):0); ruralPop+=u.pop; } });
+  const rv=rural.reduce((a,x)=>a+x.v,0), rf=rural.reduce((a,x)=>a+x.fNet,0);
+  return {st,n:zones.length,units:s("n"),econ:s("econ"),eP:s("eP"),eC:s("eC"),eF:s("eF"),eA:s("eA"),colect:s("colect"),
+    consB:s("consB"),consA:s("consA"),minCov:rural.length?Math.min(...rural.map(x=>x.coverNet)):NaN,dmax:Math.max(0,...st.map(x=>x.dmax)),
+    minPop:rural.length?Math.min(...rural.map(x=>x.pop)):NaN, dAvg: ruralPop? wd/ruralPop : 0, wd, ruralPop, rv, rf,
+    ruralCov: rv/rf, ruralNow: (rv-rural.reduce((a,x)=>a+x.colect,0))/(rf+rural.reduce((a,x)=>a+x.econ,0)),
+    allContig:st.every(x=>x.contig), nMerged:zones.filter(z=>z.members.size>1).length,
+    nAbsorbed:zones.reduce((a,z)=>a+z.members.size-1,0),
+    tcMerged: zones.reduce((a,z)=>a+(z.members.size>1?[...z.members].reduce((b,k)=>{ const u=byKey.get(k); return b+(u.tip==="M"?0:(u.fin?.tc||0)); },0):0),0)};
+}
+function econPct(T){ return T.tcMerged? pct1(T.econ/T.tcMerged) : "–"; }
+
+/* ============================================================
+   4. HARTA
+   ============================================================ */
+let map=null, geoLayer=null, lineLayer=null, countyLayer=null, geoOk=null, renderer=null;
+function initMap(){
+  renderer=L.canvas({padding:.3,tolerance:2});
+  map=L.map("map",{zoomControl:true,attributionControl:true,preferCanvas:true,renderer,minZoom:6,maxZoom:13,zoomSnap:.25}).setView([45.9,24.9],7);
+  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{
+    attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> · Contururi: geo-spatial.org · Date: MF 2025 (prin transparenta.eu), INS RPL 2021',
+    maxZoom:16, opacity:.5}).addTo(map);
+}
+/* zonele afișate acum pe hartă (pentru culoare și contururi) */
+function shownZones(){
+  if(S.mode==="summary") return S.cc ? countyZones(S.cc,S.sumT) : nationalZones(S.sumT);
+  if(S.mode==="edit"||S.mode==="auto") return groups();
+  return null;
+}
+let zoneIndex=new Map();
+function indexZones(){ zoneIndex=new Map(); const zs=shownZones(); if(zs) for(const z of zs) for(const k of z.members) zoneIndex.set(k,z); }
+function focusCC(){ return S.mode==="edit"||S.mode==="auto" ? S.wcc : S.cc; }
+function styleFor(u){
+  if(!u) return {color:"#8a918d",weight:.4,opacity:.6,fillColor:"#c9ccc7",fillOpacity:.35};
+  const fcc=focusCC(); const out = fcc && u.cc!==fcc;
+  let fill="#c9ccc7", op=.82;
+  if(S.mode==="actual"||S.mode==="data"){ fill=curCats()[curCat(u)].hex; }
+  else { const z=zoneIndex.get(u.key);
+    if(z){ fill = S.colorBy==="cov" && u.fin ? NCAT[netCat(gStats(z).coverNet)].hex : z.color; op=.86; }
+    else { fill="#e8e9e6"; op=.5; } }
+  const sel = S.mode==="edit" && S.activeGroup && zoneIndex.get(u.key)?.id===S.activeGroup;
+  const zoom = map?map.getZoom():7;
+  if(out) return {color:"#9aa09c",weight:.3,opacity:.5,fillColor:fill,fillOpacity:.22};
+  return {color: sel?"#000":"#2b3445", weight: sel?2.5:(zoom>=9?1:.35), opacity: sel?1:(zoom>=9?.7:.45), fillColor:fill, fillOpacity:op};
+}
+function drawGeo(){
+  const fc=topojson.feature(TOPO,OBJ);
+  geoLayer=L.geoJSON(fc,{renderer,
+    style:f=>styleFor(byKey.get(String(f.id))),
+    onEachFeature:(f,layer)=>{ const u=byKey.get(String(f.id)); if(u){ u.layer=layer; layer.on("click",()=>onUatClick(u.key)); }
+      layer.bindTooltip(()=>tooltipHtml(u,String(f.id)),{sticky:true,className:"tt"}); }
+  }).addTo(map);
+  /* granițele județelor */
+  const ccOf=id=>{ const u=byKey.get(String(id)); return u?u.cc:"B"; };
+  countyLayer=L.geoJSON(topojson.mesh(TOPO,OBJ,(a,b)=>a===b||ccOf(a.id)!==ccOf(b.id)),{renderer,interactive:false,style:{color:"#14213d",weight:1.6,opacity:.85}}).addTo(map);
+  map.on("zoomend",()=>restyle(true));
+  document.getElementById("maploading").hidden=true;
+  geoOk=true; fitFocus();
+}
+function fitFocus(){
+  if(!map||!geoLayer) return; const cc=focusCC();
+  if(!cc){ map.fitBounds([[43.62,20.26],[48.27,29.7]],{padding:[10,10]}); return; }
+  const b=L.latLngBounds([]); unitsOf(cc).forEach(u=>{ if(u.layer) b.extend(u.layer.getBounds()); });
+  if(b.isValid()) map.fitBounds(b,{padding:[16,16]});
+}
+/* Granițele noilor zone: segmentele de contur dintre UAT aflate în zone diferite (topologie comună) */
+function drawLines(){
+  if(!map||!geoLayer) return; if(lineLayer) lineLayer.remove(); lineLayer=null;
+  if(!(S.mode==="summary"||S.mode==="edit"||S.mode==="auto")) return;
+  const fcc=focusCC();
+  const zid=id=>{ const z=zoneIndex.get(String(id)); return z?z.id:"u"+id; };
+  const inScope=id=>{ const u=byKey.get(String(id)); return u && (!fcc||u.cc===fcc); };
+  const mesh=topojson.mesh(TOPO,OBJ,(a,b)=>a!==b && (inScope(a.id)||inScope(b.id)) && byKey.get(String(a.id))?.cc===byKey.get(String(b.id))?.cc && zid(a.id)!==zid(b.id));
+  const w = fcc ? 2.6 : 1.1;
+  lineLayer=L.layerGroup([
+    L.geoJSON(mesh,{renderer,interactive:false,style:{color:"#ffffff",weight:w+2.4,opacity:fcc?.9:.0}}),
+    L.geoJSON(mesh,{renderer,interactive:false,style:{color:"#14213d",weight:w,opacity:.95}})
+  ]).addTo(map);
+  if(countyLayer) countyLayer.bringToFront();
+}
+function restyle(onlyStyle){
+  if(!geoLayer) return;
+  if(!onlyStyle) indexZones();
+  geoLayer.eachLayer(l=>l.setStyle(styleFor(byKey.get(String(l.feature.id)))));
+  if(!onlyStyle) drawLines();
+}
+function tooltipHtml(u,id){
+  if(!u) return id===BUC?`<b>București</b><br>Nu intră în simulare: municipiul are șase sectoare cu bugete proprii.`:"";
+  let h=`<b>${esc(u.name)}</b> · ${tipName(u.tip)}, jud. ${esc(JUD[u.cc])}<br>${fmt(u.pop)} locuitori (2021)`;
+  if(u.fin) h+=`<br>${chip(u)} acoperire proprie ${pct(netRatio(u.fin))}<br>Venituri proprii: ${fmtLei(u.fin.v)} lei · funcționare: ${fmtLei(u.fin.f)} lei`;
+  const zg = (S.mode==="summary"||S.mode==="edit"||S.mode==="auto") ? zoneIndex.get(u.key) : null;
+  if(zg && zg.members.size>1 && u.fin){ const st=gStats(zg);
+    h+=`<hr style="border:0;border-top:1px solid var(--line);margin:6px 0">Zona <b>★ ${esc(byKey.get(st.seat).name)}</b>${u.key===st.seat?" · aici e reședința":` · ${km(u.key,st.seat).toFixed(0)} km până la reședință`}<br>${st.n} UAT, ${fmt(st.pop)} loc. · acoperire ${pct(st.coverNetNow)} → <b>${pct(st.coverNet)}</b>`; }
+  else if(zg && S.mode==="summary") h+=`<br><i>Rămâne separată</i>`;
+  return h;
+}
+function onUatClick(key){
+  const u=byKey.get(key);
+  if(S.mode==="summary"){ if(!S.cc){ S.cc=u.cc; render(); restyle(); fitFocus(); } return; }
+  if(S.mode==="actual"){ S.selected=key; if(S.cc!==u.cc){ S.cc=u.cc; restyle(); } render(); panel.scrollTop=0; return; }
+  if(S.mode==="auto"){ if(u.cc!==S.wcc){ S.wcc=u.cc; save(); restyle(); render(); fitFocus(); } return; }
+  if(S.mode!=="edit") return;
+  if(u.cc!==S.wcc){ S.wcc=u.cc; S.activeGroup=null; ensureGroups(); save(); restyle(); render(); fitFocus(); return; }
+  if(!S.activeGroup){ newGroup(u.name,[key]); return; }
+  const g=groups().find(x=>x.id===S.activeGroup); const prev=groupOf(key);
+  if(prev===g){ prev.members.delete(key); }
+  else { if(prev) prev.members.delete(key); g.members.add(key); }
+  cleanupGroups(); statCache.clear(); save(); restyle(); render();
+}
+
+/* ============================================================
+   5. GRUPĂRI (Construiește zone)
+   ============================================================ */
+let gid=1;
+function newGroup(name,keys){
+  keys.forEach(k=>{const p=groupOf(k); if(p) p.members.delete(k);});
+  const gs=groups(); const g={id:"g"+(gid++)+"_"+Date.now().toString(36),name,color:PALETTE[gs.length%PALETTE.length],members:new Set(keys)};
+  gs.push(g); S.activeGroup=g.id; cleanupGroups(); save(); restyle(); render(); return g;
+}
+function cleanupGroups(){ S.groupsBy[S.wcc]=groups().filter(g=>g.members.size>0); if(S.activeGroup && !groups().find(g=>g.id===S.activeGroup)) S.activeGroup=null; }
+function singletons(){ S.groupsBy[S.wcc]=unitsOf(S.wcc).map((u,i)=>({id:"s"+i,name:u.name,seat:u.key,color:PALETTE[i%PALETTE.length],members:new Set([u.key])})); }
+function presetGroups(zones){
+  S.groupsBy[S.wcc]=zones.map((z,i)=>({id:"p"+i+"_"+Date.now().toString(36),name:z.name,seat:z.seat,color:z.color||PALETTE[i%PALETTE.length],members:new Set(z.members)}));
+  const used=new Set(groups().flatMap(g=>[...g.members]));
+  unitsOf(S.wcc).filter(u=>!used.has(u.key)).forEach((u,i)=>groups().push({id:"r"+i,name:u.name,seat:u.key,color:"#9aa0a6",members:new Set([u.key])}));
+  S.activeGroup=null; statCache.clear(); save(); restyle(); render();
+}
+function ensureGroups(){ if(!S.groupsBy[S.wcc]||!S.groupsBy[S.wcc].length) S.groupsBy[S.wcc]=countyZones(S.wcc,S.sumT).map(z=>({...z,members:new Set(z.members)})); }
+
+/* ============================================================
+   6. EXPORT
+   ============================================================ */
+function scenarioCSV(gs,cc){
+  const rows=["judet;grupare;resedinta;uat;siruta;tip;populatie_2021;economie_estimata_zona_lei"];
+  for(const g of gs){ const st=gStats(g); for(const k of g.members){const u=byKey.get(k); rows.push(`${JUD[u.cc]};${g.name};${byKey.get(st.seat).name};${u.name};${u.key};${u.tip};${u.pop};${Math.round(st.econ)}`);} }
+  rows.push(""); rows.push("grupare;nr_uat;populatie;suprafata_km2;venituri_proprii;personal_administrativ;personal_total;functionare;dezvoltare;tva_cheltuieli_descentralizate;functionare_fara_descentralizate;acoperire_proprie;economie_estimata");
+  const r0=x=>isNaN(x)?"":Math.round(x);
+  for(const g of gs){const st=gStats(g); rows.push([g.name,st.n,st.pop,st.area.toFixed(1),r0(st.v),r0(st.pa),r0(st.pt),r0(st.f),r0(st.dev),r0(st.tvd),r0(st.fNet),isNaN(st.coverNet)?"":st.coverNet.toFixed(3),r0(st.econ)].join(";"));}
+  return rows.join("\n");
+}
+function download(name,text){ try{ const a=document.createElement("a"); a.href=URL.createObjectURL(new Blob(["﻿"+text],{type:"text/csv;charset=utf-8"})); a.download=name; document.body.appendChild(a); a.click(); a.remove(); }catch(e){} }
+async function copy(text,btn){
+  try{ await navigator.clipboard.writeText(text); btn.textContent="Copiat"; }catch(e){ btn.textContent="Copierea nu e permisă aici"; }
+  setTimeout(()=>{btn.textContent=btn.dataset.label;},1800);
+}
+
+/* ============================================================
+   7. PANOU LATERAL
+   ============================================================ */
+const panel=document.getElementById("panel");
+const ccOptions=(sel,withAll)=>(withAll?`<option value="">Toată țara</option>`:"")+CCS.map(cc=>`<option value="${cc}" ${cc===sel?"selected":""}>${esc(JUD[cc])}</option>`).join("");
+function ccSelect(id,sel,withAll,label){ return `<div class="ccsel"><label class="note" for="${id}">${label||"Județul"}</label><select id="${id}">${ccOptions(sel,withAll)}</select></div>`; }
+function thrSeg(attr,cur){ return `<div class="seg" role="group" aria-label="Prag minim de populație">${PRAGURI.map(t=>`<button class="segbtn" data-${attr}="${t}" aria-pressed="${t===cur}">${fmt(t)}</button>`).join("")}</div>`; }
+function colorToggle(){
+  return `<div class="seg" role="group" aria-label="Culoarea hărții">
+    <button class="segbtn" id="cC" aria-pressed="${S.colorBy==="cov"}">Harta după acoperire</button>
+    <button class="segbtn" id="cZ" aria-pressed="${S.colorBy!=="cov"}">Harta pe zone</button></div>
+    ${S.colorBy==="cov"?`<div class="legend covleg">${NCAT.slice(1).map(c=>`<div><span class="sw" style="background:${c.hex}"></span>${["Sub 50%","50–75%","75–99%","Peste 100%"][c.k-1]} din funcționare acoperită din venituri proprii</div>`).join("")}</div>`:""}`;
+}
+function coverChart(zs){
+  const max=1.2, W=100, pos=x=>Math.max(0,Math.min(max,x))/max*W;
+  return `<div class="cchart" role="img" aria-label="Acoperirea funcționării din venituri proprii, pe zone, azi și după comasare">
+    <div class="cscale"><span style="left:${pos(.5)}%">50%</span><span style="left:${pos(.75)}%">75%</span><span style="left:${pos(1)}%">100%</span></div>
+    ${zs.map(x=>`<div class="crow" data-z="${x.z.id}">
+      <div class="clab"><span class="sw" style="background:${x.z.color}"></span>${esc(x.z.name)}</div>
+      <div class="ctrack"><i style="left:${pos(.5)}%"></i><i style="left:${pos(.75)}%"></i><i class="c100" style="left:${pos(1)}%"></i>
+        <span class="cbar" style="width:${pos(x.st.coverNet)}%;background:${NCAT[netCat(x.st.coverNet)].hex}"></span>
+        ${x.st.n>1?`<span class="cnow" style="left:${pos(x.st.coverNetNow)}%" title="azi ${pct(x.st.coverNetNow)}"></span>`:""}</div>
+      <b class="cval">${pct(x.st.coverNet)}</b></div>`).join("")}
+    <div class="note">Bara: după comasare, cu economiile incluse. Cercul: azi, comunele zonei adunate.</div>
+  </div>`;
+}
+function miniBar(r){ return `<span class="mini" aria-hidden="true"><span style="width:${Math.max(0,Math.min(1.2,r))/1.2*100}%;background:${NCAT[netCat(r)].hex}"></span></span>`; }
+function econTable(T){
+  return `<div class="tablewrap" style="max-height:none"><table class="ind"><tbody>
+      <tr><td>Primari, viceprimari, secretari generali și posturi de suport dublate (${fmt(T.nAbsorbed)} primării)</td><td class="n">${fmtLei(T.eP)}</td></tr>
+      <tr><td>Consilieri locali: de la ${fmt(T.consB)} la ${fmt(T.consA)}</td><td class="n">${fmtLei(T.eC)}</td></tr>
+      <tr><td>Funcționarea unei primării separate (licențe, audit, juridic, autoturism, IT, bancă)</td><td class="n">${fmtLei(T.eF)}</td></tr>
+      <tr><td>Minus armonizarea salarială a personalului preluat</td><td class="n">−${fmtLei(T.eA)}</td></tr>
+      <tr><td><b>Total pe an</b></td><td class="n"><b>${fmtLei(T.econ)}</b></td></tr>
+      <tr><td>Din totalul cheltuielilor primăriilor comasate (${fmtLei(T.tcMerged)} lei în 2025)</td><td class="n"><b>${econPct(T)}</b></td></tr>
+    </tbody></table></div>`;
+}
+
+/* ---------- Propunerea: toată țara ---------- */
+function nationalHtml(){
+  const T=S.sumT;
+  const per=CCS.map(cc=>{ const zs=countyZones(cc,T); const t=scenarioTotals(zs); return {cc,n:unitsOf(cc).length,k:zs.length,t,has:!!scenFor(cc,T)}; });
+  const sum=k=>per.reduce((a,x)=>a+x.t[k],0);
+  const nNow=per.reduce((a,x)=>a+x.n,0), nAfter=per.reduce((a,x)=>a+x.k,0);
+  const econ=sum("econ"), tcM=sum("tcMerged"), rv=sum("rv"), rf=sum("rf");
+  const ruralNow=per.reduce((a,x)=>a+x.t.rv-x.t.colect,0)/per.reduce((a,x)=>a+x.t.rf+x.t.econ,0);
+  const dAvg=sum("wd")/sum("ruralPop");
+  const missing=per.filter(x=>!x.has).map(x=>JUD[x.cc]);
+  per.sort((a,b)=>(a.t.ruralCov||0)-(b.t.ruralCov||0));
+  return `
+  <div class="section"><h2>Prag minim de populație pe zonă</h2>${thrSeg("t",T)}</div>
+  <div class="lead">
+    <div class="big">${fmt(nNow)} → ${fmt(nAfter)}</div>
+    <p>În fiecare județ, zonele au cel puțin <b>${fmt(T)} de locuitori</b> și sunt formate din comune <b>vecine, legate între ele</b>, fără să treacă granița județului. Reședința e aleasă astfel încât locuitorii să fie cât mai aproape de ea.</p>
+  </div>
+  <div class="kpis">
+    <div class="kpi"><b>${fmtLei(econ)}</b><span>lei pe an economie estimată (${tcM?pct1(econ/tcM):"–"} din cheltuielile primăriilor comasate)</span></div>
+    <div class="kpi"><b>${dAvg.toFixed(0)} km</b><span>distanța medie până la reședință, în afara municipiilor</span></div>
+    <div class="kpi"><b>${pct(ruralNow)} → ${pct(rv/rf)}</b><span>funcționare acoperită din venituri proprii, în afara municipiilor</span></div>
+  </div>
+  ${missing.length?`<p class="hint">Propunerea automată pentru ${missing.join(", ")} nu e încă disponibilă la acest prag; acolo rămân UAT-urile actuale.</p>`:""}
+  <div class="section"><h2>Economia estimată: ${fmtLei(econ)} lei pe an</h2>${econTable({nAbsorbed:sum("nAbsorbed"),eP:sum("eP"),consB:sum("consB"),consA:sum("consA"),eC:sum("eC"),eF:sum("eF"),eA:sum("eA"),econ,tcMerged:tcM})}
+    <p class="note">Sume în lei pe an, la salariile din 2025. Ipotezele se pot modifica în fila Construiește zone. Personalul de la ghișee rămâne în fiecare comună, ca birou local.</p></div>
+  <div class="section"><h2>Pe județe <span class="note">de la cea mai slabă acoperire la cea mai bună</span></h2>
+    ${colorToggle()}
+    <div class="tablewrap"><table><thead><tr><th>Județ</th><th class="n">UAT</th><th class="n">Economie/an</th><th class="n">Acoperire</th></tr></thead><tbody>
+    ${per.map(x=>`<tr data-cc="${x.cc}" tabindex="0"><td>${esc(JUD[x.cc])}</td><td class="n">${x.n} → ${x.k}</td><td class="n">${fmtLei(x.t.econ)}</td><td class="n">${pct(x.t.ruralNow)} → <b>${pct(x.t.ruralCov)}</b> ${miniBar(x.t.ruralCov)}</td></tr>`).join("")}
+    </tbody></table></div>
+    <p class="note">Acoperire: cât din funcționarea proprie (fără învățământ și asistență socială finanțate din TVA) plătesc zonele din afara municipiilor din venituri proprii, azi → după comasare. Atinge un județ ca să-i vezi zonele.</p>
+  </div>
+  <div class="row"><button class="btn primary" id="goEdit">Modifică zonele unui județ</button><button class="btn" id="goMap">Vezi situația de azi</button></div>
+  <p class="note">Date: execuția bugetară la 31.12.2025 a fiecărei primării (rapoartele Ministerului Finanțelor, preluate prin transparenta.eu); INS, RPL 2021. Metodologia este în fila Surse.</p>`;
+}
+/* ---------- Propunerea: un județ ---------- */
+function countyHtml(cc){
+  const T=S.sumT, zones=countyZones(cc,T), sc=scenFor(cc,T), n=unitsOf(cc).length;
+  const zs=zones.map(z=>({z,st:gStats(z)})).sort((a,b)=>byCovAsc(a.st,b.st));
+  const t=scenarioTotals(zones);
+  const allNow=unitsOf(cc).reduce((a,u)=>[a[0]+u.fin.v,a[1]+u.fin.f-u.fin.tvd],[0,0]);
+  return `<button class="btn link" id="backAll">← Toată țara</button>
+  ${ccSelect("ccS",cc,true,"Județul")}
+  <div class="section"><h2>Prag minim de populație pe zonă</h2>${thrSeg("t",T)}</div>
+  <div class="lead"><div class="big">${n} → ${zones.length}</div>
+    <p>${sc?`Județul ${esc(JUD[cc])}: fiecare zonă are cel puțin <b>${fmt(T)} de locuitori</b> și e formată din comune <b>vecine, legate între ele</b>.`:`Propunerea automată pentru acest prag nu e încă disponibilă; se arată UAT-urile actuale.`}</p></div>
+  <div class="kpis">
+    <div class="kpi"><b>${fmt(t.minPop)}</b><span>locuitori în cea mai mică zonă din afara municipiilor</span></div>
+    <div class="kpi"><b>${t.dAvg.toFixed(0)} km</b><span>distanța medie până la reședință (maxim ${Math.ceil(t.dmax)} km)</span></div>
+    <div class="kpi"><b>${pct(t.ruralNow)} → ${pct(t.ruralCov)}</b><span>funcționare acoperită din venituri proprii, în afara municipiilor</span></div>
+  </div>
+  <div class="section"><h2>Cât din funcționarea proprie acoperă fiecare zonă</h2>${colorToggle()}${coverChart(zs)}</div>
+  <div class="section"><h2>Economia estimată: ${fmtLei(t.econ)} lei pe an <span class="note">(${econPct(t)} din cheltuielile primăriilor comasate)</span></h2>${econTable(t)}</div>
+  <div class="section"><h2>Zonele <span class="note">de la cea mai slabă acoperire la cea mai bună</span></h2>
+    <div class="groups">${zs.map(x=>`<div class="group zrow" data-z="${x.z.id}" role="button" tabindex="0"><span class="sw" style="background:${x.z.color}"></span><span class="name">★ ${esc(x.z.name)}</span><span class="pop">${fmt(x.st.pop)}</span>
+      <div class="meta">${x.st.n} UAT: ${namesHtml(x.z.members,x.st.seat)}${x.st.n>1?`<br>Max. ${Math.ceil(x.st.dmax)} km până la reședință · acoperire ${pct(x.st.coverNetNow)} → <b>${pct(x.st.coverNet)}</b> · economie ${fmtLei(x.st.econ)} lei/an`:`<br>Rămâne separată · acoperire <b>${pct(x.st.coverNet)}</b>`}</div></div>`).join("")}</div>
+  </div>
+  <div class="section"><h2>Pe scurt</h2><ul class="findings">
+    ${sc?`<li>Cu pragul de ${fmt(T)} de locuitori rezultă cel mult ${sc.Kmax} zone continue. Variante cu mai puține zone sunt în fila Propunere automată.</li>`:""}
+    <li>Cea mai slabă zonă din afara municipiilor își acoperă ${pct(t.minCov)} din funcționarea proprie din venituri proprii.</li>
+    <li>Întregul județ, cu municipii cu tot, acoperă azi ${pct(allNow[0]/allNow[1])} din funcționarea proprie.</li>
+    <li>Reședința propusă e marcată cu ★; o poți schimba în fila Construiește zone.</li>
+  </ul></div>
+  <div class="row"><button class="btn primary" id="goEdit">Modifică zonele</button><button class="btn" id="dl" data-label="Descarcă CSV">Descarcă CSV</button><button class="btn" id="cp" data-label="Copiază tabelul">Copiază tabelul</button></div>`;
+}
+
+function indicatorsHtml(st){
+  const pc=x=>isNaN(x)||!st.pop?"":`<span class="note">${fmt(x/st.pop)} lei/loc.</span>`;
+  const row=(label,val,extra)=>`<tr><td>${label}</td><td class="n">${val}</td><td class="n">${extra||""}</td></tr>`;
+  const lei=x=>isNaN(x)?"–":fmtLei(x);
+  const def=st.deficit;
+  return `<div class="tablewrap" style="max-height:none"><table class="ind"><tbody>
+    ${row("Populație 2021",fmt(st.pop)+" loc.")}
+    ${row("Suprafață",st.area.toLocaleString("ro-RO",{maximumFractionDigits:1})+" km²",`<span class="note">${fmt(st.pop/st.area)} loc./km²</span>`)}
+    ${row("Cote din impozitul pe venit (04.01)",lei(st.pit),pc(st.pit))}
+    ${row("Sume de echilibrare de la stat și județ",lei(st.eq),pc(st.eq))}
+    ${row("Venituri proprii",lei(st.v),pc(st.v))}
+    ${row("Cheltuieli personal administrativ",lei(st.pa),pc(st.pa))}
+    ${row("Cheltuieli personal total",lei(st.pt),pc(st.pt))}
+    ${row("Cheltuieli de funcționare",lei(st.f),pc(st.f))}
+    ${row("Cheltuieli de dezvoltare",lei(st.dev),pc(st.dev))}
+    ${row("Sume din TVA pentru cheltuieli descentralizate",lei(st.tvd),pc(st.tvd))}
+    ${row("Funcționare fără cheltuielile descentralizate",lei(st.fNet),pc(st.fNet))}
+    ${row(isNaN(def)||def>=0?"Funcționare finanțată din transferuri":"Excedent","<b>"+lei(Math.abs(def))+"</b>",pc(Math.abs(def)))}
+    ${row("Acoperire funcționare (totală)","<b>"+pct(st.cover)+"</b>")}
+    ${row("Acoperire fără cheltuieli descentralizate","<b>"+pct(st.coverNet)+"</b>")}
+  </tbody></table></div>
+  <p class="note">Sume în lei, execuție bugetară 2025. Cheltuielile descentralizate (învățământ, asistență socială, protecția copilului) sunt finanțate de stat prin sume din TVA.</p>`;
+}
+function legendFin(units){
+  const cats=curCats();
+  return `<div class="section"><h2>Ce acoperă veniturile proprii (2025)</h2>
+    <div class="seg" role="group" aria-label="Indicator">
+      <button class="segbtn" id="mNet" aria-pressed="${S.metric==="net"}">Funcționarea proprie</button>
+      <button class="segbtn" id="mTot" aria-pressed="${S.metric!=="net"}">Funcționarea totală</button></div>
+    <p class="note">${S.metric==="net"
+      ? "Recomandat. Din cheltuielile de funcționare sunt scoase învățământul, asistența socială și protecția copilului, pe care statul le finanțează direct prin sume din TVA. Rămân cheltuielile de care răspunde primăria."
+      : "Toate cheltuielile de funcționare, inclusiv serviciile finanțate de stat prin sume din TVA. După acest criteriu, aproape nicio primărie din țară nu iese autonomă."}</p>
+    <div class="legend">${cats.slice(1).map(c=>`<div><span class="sw" style="background:${c.hex}"></span>${c.label} <b style="margin-left:auto;font-family:var(--f-mono)">${fmt(units.filter(u=>curCat(u)===c.k).length)}</b></div>`).join("")}</div></div>`;
+}
+function actualHtml(){
+  const units=S.cc?unitsOf(S.cc):UAT;
+  const total=units.reduce((s,u)=>s+u.pop,0);
+  const under5=units.filter(u=>u.pop<5000).length, under10=units.filter(u=>u.pop<10000).length;
+  const sel=S.selected&&byKey.get(S.selected);
+  let list="";
+  if(S.cc){
+    const q=norm(S.q);
+    const rows=units.filter(u=>!q||norm(u.name).includes(q)).sort((a,b)=>S.metric==="net"?(netRatio(a.fin)||0)-(netRatio(b.fin)||0):a.pop-b.pop);
+    list=`<div class="section"><h2>Cele ${units.length} de UAT din județul ${esc(JUD[S.cc])}</h2>
+      <input type="search" id="q" placeholder="Caută o localitate" value="${esc(S.q)}" aria-label="Caută o localitate">
+      <div class="tablewrap"><table><thead><tr><th>UAT</th><th class="n">Pop. 2021</th><th>Situație</th><th class="n">Acop.</th></tr></thead><tbody>
+      ${rows.map(u=>`<tr data-k="${u.key}" tabindex="0" class="${u.key===S.selected?"sel":""}"><td>${esc(u.name)}${u.tip!=="C"?` <span class="note">${u.tip==="M"?"mun.":"oraș"}</span>`:""}</td><td class="n">${fmt(u.pop)}</td><td>${chip(u)}</td><td class="n">${pct(netRatio(u.fin))}</td></tr>`).join("")}
+      </tbody></table></div></div>`;
+  } else {
+    const per=CCS.map(cc=>{ const us=unitsOf(cc); const v=us.reduce((a,u)=>a+u.fin.v,0), f=us.reduce((a,u)=>a+u.fin.f-u.fin.tvd,0);
+      return {cc,n:us.length,u5:us.filter(u=>u.pop<5000).length,low:us.filter(u=>netRatio(u.fin)<.5).length,r:v/f}; }).sort((a,b)=>b.low/b.n-a.low/a.n);
+    list=`<div class="section"><h2>Pe județe <span class="note">după ponderea UAT sub 50% acoperire</span></h2>
+      <div class="tablewrap"><table><thead><tr><th>Județ</th><th class="n">UAT</th><th class="n">Sub 5.000</th><th class="n">Sub 50%</th><th class="n">Județul</th></tr></thead><tbody>
+      ${per.map(x=>`<tr data-cc="${x.cc}" tabindex="0"><td>${esc(JUD[x.cc])}</td><td class="n">${x.n}</td><td class="n">${x.u5}</td><td class="n">${x.low}</td><td class="n">${pct(x.r)}</td></tr>`).join("")}
+      </tbody></table></div><p class="note">Județul: cât din funcționarea proprie a tuturor primăriilor din județ e acoperită din venituri proprii. Atinge un județ ca să-i vezi localitățile.</p></div>`;
+  }
+  return `${S.cc?`<button class="btn link" id="backAll">← Toată țara</button>`:""}
+    ${ccSelect("ccA",S.cc,true,"Arată")}
+    <div class="kpis"><div class="kpi"><b>${fmt(total)}</b><span>locuitori</span></div>
+      <div class="kpi"><b>${fmt(under5)}</b><span>UAT sub 5.000 locuitori</span></div><div class="kpi"><b>${fmt(under10)}</b><span>UAT sub 10.000 locuitori</span></div></div>
+    ${sel?`<div class="detail"><div class="top"><h2>${esc(sel.name)} <span class="note">${tipName(sel.tip)}, jud. ${esc(JUD[sel.cc])}</span></h2><button class="btn" id="closeSel">Închide</button></div>
+      <span style="align-self:flex-start">${chip(sel)}</span>${indicatorsHtml(groupStats(new Set([sel.key])))}<p class="note">CIF ${esc(sel.cif)} · SIRUTA ${esc(sel.key)}</p></div>`
+      :`<p class="note">Atinge o localitate pe hartă ca să-i vezi toți indicatorii.</p>`}
+    ${legendFin(units)}
+    ${list}`;
+}
+function totalsHtml(gs){
+  const T=scenarioTotals(gs); const bad=gs.filter(g=>!gStats(g).contig).length;
+  return `<div class="kpis"><div class="kpi"><b>${fmtLei(T.econ)}</b><span>lei/an economie estimată (${econPct(T)} din cheltuielile primăriilor comasate)</span></div>
+    <div class="kpi"><b>${pct(T.minCov)}</b><span>acoperire proprie în cea mai slabă zonă din afara municipiilor</span></div>
+    <div class="kpi"><b class="${bad?"below":""}">${bad?bad+" zone":"Toate"}</b><span>${bad?"necontinue teritorial":"zonele sunt continue"}</span></div></div>`;
+}
+function ipotezeHtml(){
+  const I=S.ip; const f=(k,label,step)=>`<label class="f" for="ip_${k}">${label}<input type="number" id="ip_${k}" data-ip="${k}" value="${I[k]}" step="${step}" min="0"></label>`;
+  return `<details class="ip"><summary>Ipoteze de calcul pentru economii</summary>
+    <div class="ipgrid">
+    ${f("primar","Primar (lei brut/lună)",100)}${f("viceprimar","Viceprimar (lei brut/lună)",100)}${f("secretar","Secretar general (lei brut/lună)",100)}
+    ${f("posturi","Posturi de suport dublate desființate",1)}${f("salariu","Salariu mediu pe acele posturi",100)}${f("plafon","Plafon: % maxim din aparatul primăriei absorbite",5)}
+    ${f("consilier","Indemnizație consilier local (lei/lună)",50)}${f("functionare","Funcționare primărie separată (lei/an)",10000)}${f("armonizare","Armonizare salarială (% din personalul preluat)",1)}
+    ${f("colectare","Creștere colectare taxe locale (%)",1)}
+    </div><div class="row"><button class="btn" id="ipReset">Revino la valorile implicite</button></div>
+    <p class="note">Salariile includ CAM 2,25%. Ipotezele se aplică în toată aplicația, inclusiv în Propunerea națională.</p></details>`;
+}
+function groupCard(g,readonly){
+  const st=gStats(g);
+  const fin = st.hasFin ? `<br>Venituri ${fmtLei(st.v)} · funcționare ${fmtLei(st.f)} lei · acoperire proprie <b>${pct(st.coverNet)}</b>${st.n>1?` (azi ${pct(st.coverNetNow)}) · economie ${fmtLei(st.econ)} lei/an`:""}` : "";
+  const title = readonly ? `<span class="name">${esc(g.name)}</span>` : `<input class="rename" data-g="${g.id}" aria-label="Numele grupării" value="${esc(g.name)}" style="font:700 14px var(--f-body);border:0;background:none;color:inherit;padding:0;min-width:0;width:100%">`;
+  const thr=S.mode==="auto"?S.threshold:S.sumT;
+  return `<div class="group ${S.activeGroup===g.id?"active":""}" data-g="${g.id}" role="button" tabindex="0">
+    <span class="sw" style="background:${g.color}"></span>${title}<span class="pop ${st.pop<thr?"below":""}">${fmt(st.pop)}</span>
+    <div class="meta">${st.contig?"":`<b class="below">Zona nu e continuă: are comune fără graniță comună cu restul. </b>`}${!readonly&&st.n>1?`<label class="seatrow">Reședința <select class="seatsel" data-g="${g.id}">${membersSeatFirst(g.members,st.seat).map(u=>`<option value="${u.key}" ${u.key===st.seat?"selected":""}>${esc(u.name)}</option>`).join("")}</select></label>`:""}
+    ${st.n} UAT: ${namesHtml(g.members,st.seat)}${fin}</div>
+    ${S.activeGroup===g.id||S.openGroup===g.id?`<div class="meta" style="cursor:default" data-stop="1">${indicatorsHtml(st)}</div>`:""}</div>`;
+}
+function editHtml(){
+  ensureGroups();
+  const gs=groups(), units=unitsOf(S.wcc);
+  const covered=new Set(gs.flatMap(g=>[...g.members]));
+  return `${ccSelect("ccE",S.wcc,false,"Județul")}
+    <p class="hint">Alege o grupare din listă, apoi atinge comunele pe hartă ca să le adaugi sau să le scoți. Fără grupare activă, un clic pornește o grupare nouă. Atingerea unei localități din alt județ schimbă județul de lucru.</p>
+    <div class="row"><button class="btn primary" id="b5">Propunerea (${fmt(S.sumT)} loc./zonă)</button>${S.wcc==="BR"?`<button class="btn" id="bo">Propunerea anterioară (5 UAT)</button>`:""}<button class="btn" id="bs">Fiecare UAT separat</button><button class="btn" id="bn">Grupare nouă</button></div>
+    ${totalsHtml(gs)}
+    ${colorToggle()}
+    ${ipotezeHtml()}
+    <div class="section"><h2>${gs.length} grupări ${covered.size<units.length?`<span class="note">· ${units.length-covered.size} UAT nealocate</span>`:""}</h2><div class="groups">
+    ${gs.slice().sort((a,b)=>byCovAsc(gStats(a),gStats(b))).map(g=>groupCard(g)).join("")}</div></div>
+    <div class="row"><button class="btn" id="dl" data-label="Descarcă CSV">Descarcă CSV</button><button class="btn" id="cp" data-label="Copiază tabelul">Copiază tabelul</button></div>`;
+}
+function autoHtml(){
+  const opts=scenList(S.wcc,S.threshold);
+  const key=S.appliedSc[S.wcc];
+  return `${ccSelect("ccU",S.wcc,false,"Județul")}
+    <div class="section"><h2>Propunere automată</h2>
+    <p class="note">Criteriile, în ordinea importanței: <b>1.</b> fiecare zonă are cel puțin pragul de populație ales, cu cât mai multe zone; <b>2.</b> zona e formată din comune vecine, legate între ele, din același județ; <b>3.</b> locuitorii sunt cât mai aproape de reședință; <b>4.</b> dintre variantele aproape la fel de compacte, cea mai slabă zonă își acoperă cât mai mult din funcționare din venituri proprii.</p>
+    <div class="f">Prag minim de populație pe zonă (locuitori)${thrSeg("thr",S.threshold)}</div>
+    <div class="opts">${opts.length?opts.map((s,i)=>{ const T=scenarioTotals(mkZones(S.wcc,s.zones)); const on=key===s.T+"_"+s.K;
+      return `<div class="opt ${on?"on":""}"><div class="ohead"><b>${s.K} UAT</b>${s.K===s.Kmax?` <span class="note">număr maxim de zone</span>`:""}</div>
+      <div class="ogrid"><div><b>${fmt(T.minPop)}</b><span>cea mai mică zonă</span></div><div><b>${T.dAvg.toFixed(0)} km</b><span>distanța medie</span></div><div><b>${fmtLei(T.econ)}</b><span>lei/an economie, ${econPct(T)}</span></div><div><b>${pct(T.ruralCov)}</b><span>acoperire în afara municipiilor</span></div></div>
+      <button class="btn primary wide" data-sc="${i}">${on?"Aplicată – vezi în Construiește zone":"Aplică această variantă"}</button></div>`; }).join("")
+      :`<p class="hint">Pentru acest județ și prag nu există încă o variantă calculată.</p>`}</div>
+    <p class="note">Numărul maxim de zone ține zonele cât mai aproape de prag. Variantele cu mai puține zone economisesc mai mult, dar zonele sunt mai întinse. Distanța medie e ponderată cu populația, în linie dreaptă.</p></div>`;
+}
+function dataHtml(){
+  return `<div class="section"><h2>Surse și metodologie</h2>
+    <p class="note"><b>Date financiare:</b> execuția bugetară la 31.12.2025 a bugetului local, la nivel de ordonator principal, pentru fiecare din cele 3.180 de UAT (2.862 de comune, 216 orașe, 102 municipii, fără București). Sunt rapoartele Ministerului Finanțelor (Forexebug), preluate prin platforma publică <a href="https://transparenta.eu" target="_blank" rel="noopener">transparenta.eu</a>. Pentru cele 44 de UAT din Brăila, toți cei 10 indicatori coincid la leu cu rapoartele COFOG3 descărcate direct de la MF. Sume în lei.</p>
+    <p class="note"><b>Venituri proprii</b> (art. 5 din Legea 273/2006): impozite și taxe locale, venituri din proprietate, prestări de servicii, amenzi și alte venituri (cap. 01–03, 05–07, 12, 14–16, 18, 30–31, 33–36), plus cotele defalcate din impozitul pe venit (04.01). Nu includ sumele de echilibrare, sumele din TVA, subvențiile și fondurile europene.</p>
+    <p class="note"><b>Aparatul primăriei</b> = cheltuieli de personal ale autorităților executive (cap. 51.01, titlul 10). <b>Funcționare</b> = secțiunea de funcționare a bugetului. <b>Cheltuieli descentralizate</b> = sume defalcate din TVA (11.02) pentru învățământ, asistență socială și protecția copilului; în varianta recomandată sunt scoase din funcționare.</p>
+    <p class="note"><b>Economia la comasare</b>, pentru fiecare primărie absorbită (reședința rămâne integral): dispar primarul, viceprimarul, secretarul general și ${IPOTEZE_DEF.posturi} posturi de suport dublate, plafonat la ${IPOTEZE_DEF.plafon}% din aparatul acelei primării; scade numărul de consilieri locali după art. 112 din Codul administrativ; dispar ${fmt(IPOTEZE_DEF.functionare)} lei/an costuri proprii ale unei primării separate; se scade armonizarea salarială de ${IPOTEZE_DEF.armonizare}% pe personalul preluat. Ipotezele se pot modifica.</p>
+    <p class="note"><b>Propunerea automată</b>: pentru fiecare județ și prag, un model de programare liniară în numere întregi (HiGHS) aplică în ordine criteriile: (1) fiecare zonă are cel puțin pragul de populație, iar numărul de zone e maxim; (2) zonele sunt continue (fiecare comună are în zonă o vecină mai apropiată de reședință); (3) suma populație × distanța în linie dreaptă până la reședință e minimă; (4) dintre soluțiile cel mult 5% mai puțin compacte, o căutare locală ridică acoperirea celei mai slabe zone. La pragurile de 7.500 – 15.000, în județele mari, modelul pornește de la o soluție construită euristic (creștere de regiuni și mutări la graniță), pe care o poate doar îmbunătăți, cu o limită de timp; rezultatul e foarte bun, dar nu garantat optim. Zonele nu trec granița județului. Pentru Brăila sunt păstrate scenariile din simulatorul Brăila 2028. Pe Brăila, metoda reproduce exact varianta de 3.000 de locuitori și numărul maxim de zone la toate pragurile testate.</p>
+    <p class="note"><b>Populație:</b> INS, Recensământul Populației și Locuințelor 2021, populația rezidentă pe UAT. <b>Contururi:</b> limitele UAT de la <a href="https://www.geo-spatial.org/" target="_blank" rel="noopener">geo-spatial.org</a> (ANCPI), simplificate; Victoria (BV), Bălan și Băile Tușnad completate din OpenStreetMap. <b>Vecinătăți:</b> graniță comună de cel puțin 200 m. <b>București</b> nu intră în simulare (șase sectoare cu bugete proprii).</p>
+    <p class="note">Aplicația extinde la toată țara simulatorul <a href="https://petreadorinsilviu.github.io/Braila-Reforma/" target="_blank" rel="noopener">Brăila 2028</a>. Ideea unei hărți interactive a comasării UAT pornește de la proiectul <a href="https://cosettechichirau.github.io/reformaadm/" target="_blank" rel="noopener">Reformă Administrativă</a> al lui Cosette Chichirău.</p>
+    <p class="note">Fișierele de date sunt în dosarul <code>date/</code> al proiectului: <code>uat_2025.json</code>, <code>date_transparenta_2025.tsv</code> (indicatorii pe CIF și SIRUTA), <code>scenarii.json</code>, <code>ro_uat.topojson</code>.</p></div>`;
+}
+function render(){
+  document.querySelectorAll("nav button").forEach(b=>b.setAttribute("aria-selected",String(b.dataset.mode===S.mode)));
+  if(!UAT.length) return;
+  if(S.mode==="summary") panel.innerHTML=S.cc?countyHtml(S.cc):nationalHtml();
+  else if(S.mode==="actual") panel.innerHTML=actualHtml();
+  else if(S.mode==="edit") panel.innerHTML=editHtml();
+  else if(S.mode==="auto") panel.innerHTML=autoHtml();
+  else panel.innerHTML=dataHtml();
+  bind();
+}
+function bind(){
+  const $=s=>panel.querySelector(s), $$=s=>panel.querySelectorAll(s);
+  const onCC=(id,fn)=>{ const el=$(id); if(el) el.onchange=e=>fn(e.target.value||null); };
+  onCC("#ccS",v=>{ S.cc=v; render(); restyle(); fitFocus(); });
+  onCC("#ccA",v=>{ S.cc=v; S.selected=null; S.q=""; render(); restyle(); fitFocus(); });
+  onCC("#ccE",v=>{ S.wcc=v; S.activeGroup=null; save(); render(); restyle(); fitFocus(); });
+  onCC("#ccU",v=>{ S.wcc=v; save(); render(); restyle(); fitFocus(); });
+  const ba=$("#backAll"); if(ba) ba.onclick=()=>{ S.cc=null; S.selected=null; render(); restyle(); fitFocus(); };
+  $$("[data-t]").forEach(b=>b.onclick=()=>{ S.sumT=+b.dataset.t; save(); render(); restyle(); });
+  $$("tr[data-cc]").forEach(tr=>{ const go=()=>{ S.cc=tr.dataset.cc; render(); restyle(); fitFocus(); panel.scrollTop=0; }; tr.onclick=go; tr.onkeydown=e=>{ if(e.key==="Enter") go(); }; });
+  $$("tr[data-k]").forEach(tr=>{ const go=()=>{ const u=byKey.get(tr.dataset.k); S.selected=u.key; render(); panel.scrollTop=0; if(u.layer&&map) map.fitBounds(u.layer.getBounds(),{maxZoom:11}); }; tr.onclick=go; tr.onkeydown=e=>{ if(e.key==="Enter") go(); }; });
+  $$(".zrow,.crow").forEach(el=>el.onclick=()=>{ const z=countyZones(S.cc,S.sumT).find(x=>x.id===el.dataset.z); if(!z) return; const b=L.latLngBounds([]); z.members.forEach(k=>{const l=byKey.get(k).layer; if(l) b.extend(l.getBounds());}); if(b.isValid()) map.fitBounds(b,{maxZoom:11,padding:[30,30]}); });
+  const ge=$("#goEdit"); if(ge) ge.onclick=()=>{ S.mode="edit"; if(S.cc){ S.wcc=S.cc; S.groupsBy[S.wcc]=countyZones(S.wcc,S.sumT).map(z=>({...z,members:new Set(z.members)})); } S.activeGroup=null; statCache.clear(); save(); render(); restyle(); fitFocus(); };
+  const gm=$("#goMap"); if(gm) gm.onclick=()=>{ S.mode="actual"; render(); restyle(); };
+  const q=$("#q"); if(q){ q.oninput=e=>{ S.q=e.target.value; const pos=e.target.selectionStart; render(); const nq=$("#q"); nq.focus(); try{nq.setSelectionRange(pos,pos);}catch(_){} }; }
+  const cs=$("#closeSel"); if(cs) cs.onclick=()=>{ S.selected=null; render(); };
+  const mn=$("#mNet"), mt=$("#mTot");
+  if(mn) mn.onclick=()=>{ S.metric="net"; save(); restyle(); render(); };
+  if(mt) mt.onclick=()=>{ S.metric="total"; save(); restyle(); render(); };
+  const cz=$("#cZ"), cc=$("#cC");
+  if(cz) cz.onclick=()=>{ S.colorBy="zone"; save(); restyle(); render(); };
+  if(cc) cc.onclick=()=>{ S.colorBy="cov"; save(); restyle(); render(); };
+  /* Construiește zone */
+  const b5=$("#b5"); if(b5) b5.onclick=()=>presetGroups(countyZones(S.wcc,S.sumT));
+  const bo=$("#bo"); if(bo) bo.onclick=()=>presetGroups(mkZones("BR",PRESET_VECHI_BR));
+  const bs=$("#bs"); if(bs) bs.onclick=()=>{ singletons(); S.activeGroup=null; statCache.clear(); save(); restyle(); render(); };
+  const bn=$("#bn"); if(bn) bn.onclick=()=>{ const gs=groups(); const g={id:"n"+Date.now().toString(36),name:"Grupare nouă",color:PALETTE[gs.length%PALETTE.length],members:new Set()}; gs.push(g); S.activeGroup=g.id; render(); };
+  $$(".group[data-g]").forEach(el=>{ el.onclick=e=>{ if(e.target.closest("[data-stop]")) return;
+    if(S.mode==="edit"){ S.activeGroup=S.activeGroup===el.dataset.g?null:el.dataset.g; restyle(); render(); }
+    else { S.openGroup=S.openGroup===el.dataset.g?null:el.dataset.g; render(); } }; });
+  $$(".rename").forEach(inp=>{ inp.onclick=e=>e.stopPropagation(); inp.onchange=e=>{ const g=groups().find(x=>x.id===inp.dataset.g); g.name=e.target.value||g.name; save(); }; });
+  $$(".seatsel").forEach(sel=>{ sel.onclick=e=>e.stopPropagation(); sel.onchange=e=>{ const g=groups().find(x=>x.id===sel.dataset.g); g.seat=e.target.value; g.name=byKey.get(g.seat).name; statCache.clear(); save(); restyle(); render(); }; });
+  $$("[data-ip]").forEach(inp=>{ inp.onchange=e=>{ const v=parseFloat(e.target.value); if(!isNaN(v)&&v>=0){ S.ip[inp.dataset.ip]=v; statCache.clear(); save(); restyle(); render(); const d=panel.querySelector("details.ip"); if(d) d.open=true; } }; });
+  const ir=$("#ipReset"); if(ir) ir.onclick=()=>{ S.ip={...IPOTEZE_DEF}; statCache.clear(); save(); restyle(); render(); };
+  /* Propunere automată */
+  $$("[data-thr]").forEach(b=>b.onclick=()=>{ S.threshold=+b.dataset.thr; save(); render(); });
+  $$("[data-sc]").forEach(b=>b.onclick=()=>{ const sc=scenList(S.wcc,S.threshold)[+b.dataset.sc]; const key=sc.T+"_"+sc.K;
+    if(S.appliedSc[S.wcc]===key){ S.mode="edit"; render(); restyle(); return; }
+    S.appliedSc[S.wcc]=key; presetGroups(mkZones(S.wcc,sc.zones)); });
+  /* export */
+  const dl=$("#dl"), cp=$("#cp");
+  const exp=()=>S.mode==="summary"?scenarioCSV(countyZones(S.cc,S.sumT)):scenarioCSV(groups());
+  const fname=()=>`scenariu_${norm(JUD[S.mode==="summary"?S.cc:S.wcc])}.csv`;
+  if(dl) dl.onclick=()=>download(fname(),exp());
+  if(cp) cp.onclick=()=>copy(exp(),cp);
+}
+document.querySelectorAll("nav button").forEach(b=>b.onclick=()=>{ S.mode=b.dataset.mode; S.activeGroup=null; render(); restyle(); fitFocus();
+  if(matchMedia("(max-width:860px)").matches) document.querySelector("aside").scrollIntoView({behavior:"smooth",block:"start"}); });
+
+/* ============================================================
+   8. PORNIRE
+   ============================================================ */
+async function getJSON(p){ const r=await fetch(p); if(!r.ok) throw new Error(p+": HTTP "+r.status); return r.json(); }
+(async function start(){
+  S.ip={...IPOTEZE_DEF};
+  try{ initMap(); }catch(e){ console.warn(e); }
+  try{
+    const [d,sc,topo]=await Promise.all([getJSON("date/uat_2025.json"),getJSON("date/scenarii.json"),getJSON("date/ro_uat.topojson")]);
+    JUD=d.judete;
+    for(const r of d.uat){ const [s,name,cc,tip,pop,cif,area,cen,fin]=r; if(s===BUC) continue;
+      const F=Object.fromEntries(d.fin.map((k,i)=>[k,fin[i]??0]));
+      UAT.push({key:s,name,cc,tip,pop,cif,area,cen,fin:F,layer:null}); }
+    byKey=new Map(UAT.map(u=>[u.key,u]));
+    for(const [k,l] of Object.entries(d.adj)) if(byKey.has(k)) ADJ.set(k,l.filter(n=>byKey.has(n)&&byKey.get(n).cc===byKey.get(k).cc));
+    CCS=[...new Set(UAT.map(u=>u.cc))].sort((a,b)=>JUD[a].localeCompare(JUD[b],"ro"));
+    SCEN=sc.judete; PRESET_VECHI_BR=sc.preset_br||[];
+    TOPO=topo; OBJ=topo.objects[Object.keys(topo.objects)[0]];
+    load();
+    if(!CCS.includes(S.wcc)) S.wcc="BR";
+    indexZones(); render();
+    drawGeo(); restyle();
+  }catch(e){
+    console.error(e);
+    panel.innerHTML=`<p class="hint">Datele nu s-au putut încărca (${esc(e.message)}). Pornește aplicația dintr-un server web (de exemplu GitHub Pages), nu deschizând fișierul direct.</p>`;
+    document.getElementById("maploading").textContent="Harta nu s-a putut încărca.";
+  }
+})();
+</script>
+
+</body>
+</html>
