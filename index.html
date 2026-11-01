@@ -764,7 +764,7 @@ function dataHtml(){
     <p class="note"><b>Propunerea automată</b>: pentru fiecare județ și prag, un model de programare liniară în numere întregi (HiGHS) aplică în ordine criteriile: (1) fiecare zonă are cel puțin pragul de populație, iar numărul de zone e maxim; (2) zonele sunt continue (fiecare comună are în zonă o vecină mai apropiată de reședință); (3) suma populație × distanța în linie dreaptă până la reședință e minimă; (4) dintre soluțiile cel mult 5% mai puțin compacte, o căutare locală ridică acoperirea celei mai slabe zone. La pragurile de 7.500 – 15.000, în județele mari, modelul pornește de la o soluție construită euristic (creștere de regiuni și mutări la graniță), pe care o poate doar îmbunătăți, cu o limită de timp; rezultatul e foarte bun, dar nu garantat optim. Zonele nu trec granița județului. Pentru Brăila sunt păstrate scenariile din simulatorul Brăila 2028. Pe Brăila, metoda reproduce exact varianta de 3.000 de locuitori și numărul maxim de zone la toate pragurile testate.</p>
     <p class="note"><b>Populație:</b> INS, Recensământul Populației și Locuințelor 2021, populația rezidentă pe UAT. <b>Contururi:</b> limitele UAT de la <a href="https://www.geo-spatial.org/" target="_blank" rel="noopener">geo-spatial.org</a> (ANCPI), simplificate; Victoria (BV), Bălan și Băile Tușnad completate din OpenStreetMap. <b>Vecinătăți:</b> graniță comună de cel puțin 200 m. <b>București</b> nu intră în simulare (șase sectoare cu bugete proprii).</p>
     <p class="note">Aplicația extinde la toată țara simulatorul <a href="https://petreadorinsilviu.github.io/Braila-Reforma/" target="_blank" rel="noopener">Brăila 2028</a>. Ideea unei hărți interactive a comasării UAT pornește de la proiectul <a href="https://cosettechichirau.github.io/reformaadm/" target="_blank" rel="noopener">Reformă Administrativă</a> al lui Cosette Chichirău.</p>
-    <p class="note">Fișierele de date sunt în dosarul <code>date/</code> al proiectului: <code>uat_2025.json</code>, <code>date_transparenta_2025.tsv</code> (indicatorii pe CIF și SIRUTA), <code>scenarii.json</code>, <code>ro_uat.topojson</code>.</p></div>`;
+    <p class="note">Fișierele de date sunt alături de pagină, în proiect: <code>uat_2025.json</code>, <code>date_transparenta_2025.tsv</code> (indicatorii pe CIF și SIRUTA), <code>scenarii.json</code>, <code>ro_uat.topojson</code>.</p></div>`;
 }
 function render(){
   document.querySelectorAll("nav button").forEach(b=>b.setAttribute("aria-selected",String(b.dataset.mode===S.mode)));
@@ -833,7 +833,7 @@ async function getJSON(p){ const r=await fetch(p); if(!r.ok) throw new Error(p+"
   S.ip={...IPOTEZE_DEF};
   try{ initMap(); }catch(e){ console.warn(e); }
   try{
-    const [d,sc,topo]=await Promise.all([getJSON("date/uat_2025.json"),getJSON("date/scenarii.json"),getJSON("date/ro_uat.topojson")]);
+    const [d,sc,topo]=await Promise.all([getJSON("uat_2025.json"),getJSON("scenarii.json"),getJSON("ro_uat.topojson")]);
     JUD=d.judete;
     for(const r of d.uat){ const [s,name,cc,tip,pop,cif,area,cen,fin]=r; if(s===BUC) continue;
       const F=Object.fromEntries(d.fin.map((k,i)=>[k,fin[i]??0]));
