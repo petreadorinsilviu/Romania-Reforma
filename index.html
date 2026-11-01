@@ -160,7 +160,10 @@ details.ip summary{cursor:pointer;font-weight:600;font-size:13px}
 .mini{display:inline-block;width:56px;height:8px;border-radius:4px;vertical-align:middle;background:color-mix(in srgb,var(--ink) 8%,transparent);position:relative;overflow:hidden}
 .mini span{position:absolute;left:0;top:0;bottom:0;border-radius:4px}
 .leaflet-container{font-family:var(--f-body)}
-.leaflet-tooltip.tt{font:13px/1.45 var(--f-body);max-width:300px;white-space:normal;padding:8px 10px;border-radius:8px}
+.infobox{position:absolute;top:12px;right:max(12px,env(safe-area-inset-right,0px));z-index:900;width:280px;max-width:calc(100% - 64px);
+  background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:10px;padding:10px 12px;
+  font:13px/1.45 var(--f-body);box-shadow:0 4px 16px rgba(0,0,0,.18);pointer-events:none}
+.infobox hr{border:0;border-top:1px solid var(--line);margin:6px 0}
 .loading{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font:600 14px var(--f-body);color:var(--muted);pointer-events:none;z-index:500}
 .mapwrap{position:relative;min-width:0}
 @media (max-width:520px){ .kpis{grid-template-columns:1fr} .ogrid{grid-template-columns:repeat(2,minmax(0,1fr))} .segbtn{padding:8px 12px;font-size:13px} .lead .big{font-size:36px} }
@@ -176,7 +179,7 @@ details.ip summary{cursor:pointer;font-weight:600;font-size:13px}
 </head>
 <body>
 <div class="app">
-  <div class="mapwrap"><div id="map" role="region" aria-label="Harta UAT din România"></div><div class="loading" id="maploading">Se încarcă harta celor 3.181 de UAT…</div></div>
+  <div class="mapwrap"><div id="map" role="region" aria-label="Harta UAT din România"></div><div class="infobox" id="infobox" hidden></div><div class="loading" id="maploading">Se încarcă harta celor 3.181 de UAT…</div></div>
   <aside>
     <header>
       <div class="flag" aria-hidden="true"><i style="background:var(--ro-blue)"></i><i style="background:var(--ro-yellow)"></i><i style="background:var(--ro-red)"></i></div>
@@ -433,7 +436,8 @@ function drawGeo(){
   geoLayer=L.geoJSON(fc,{renderer,
     style:f=>styleFor(byKey.get(String(f.id))),
     onEachFeature:(f,layer)=>{ const u=byKey.get(String(f.id)); if(u){ u.layer=layer; layer.on("click",()=>onUatClick(u.key)); }
-      layer.bindTooltip(()=>tooltipHtml(u,String(f.id)),{sticky:true,className:"tt"}); }
+      layer.on("mouseover",()=>showInfo(u,String(f.id),layer));
+      layer.on("mouseout",()=>hideInfo(layer)); }
   }).addTo(map);
   /* granițele județelor */
   const ccOf=id=>{ const u=byKey.get(String(id)); return u?u.cc:"B"; };
@@ -446,7 +450,9 @@ function fitFocus(){
   if(!map||!geoLayer) return; const cc=focusCC();
   if(!cc){ map.fitBounds([[43.62,20.26],[48.27,29.7]],{padding:[10,10]}); return; }
   const b=L.latLngBounds([]); unitsOf(cc).forEach(u=>{ if(u.layer) b.extend(u.layer.getBounds()); });
-  if(b.isValid()) map.fitBounds(b,{padding:[16,16]});
+  /* loc liber în dreapta pentru caseta de informații, când harta e destul de lată */
+  const wide=map.getSize().x>700;
+  if(b.isValid()) map.fitBounds(b,wide?{paddingTopLeft:[16,16],paddingBottomRight:[300,16]}:{padding:[16,16]});
 }
 /* Granițele noilor zone: segmentele de contur dintre UAT aflate în zone diferite (topologie comună) */
 function drawLines(){
@@ -469,18 +475,33 @@ function restyle(onlyStyle){
   geoLayer.eachLayer(l=>l.setStyle(styleFor(byKey.get(String(l.feature.id)))));
   if(!onlyStyle) drawLines();
 }
+/* Caseta de informații: fixă în colțul din dreapta sus al hărții, ca să nu acopere județul */
+const infobox=()=>document.getElementById("infobox");
+let hovered=null;
+function showInfo(u,id,layer){
+  const h=tooltipHtml(u,id); const b=infobox(); if(!h){ b.hidden=true; return; }
+  b.innerHTML=h; b.hidden=false;
+  if(hovered&&hovered!==layer) hideInfo(hovered,true);
+  hovered=layer; layer.setStyle({weight:3,color:"#000",opacity:1});
+}
+function hideInfo(layer,keepBox){
+  if(layer){ layer.setStyle(styleFor(byKey.get(String(layer.feature.id)))); }
+  if(hovered===layer) hovered=null;
+  if(!keepBox) infobox().hidden=true;
+}
 function tooltipHtml(u,id){
   if(!u) return id===BUC?`<b>București</b><br>Nu intră în simulare: municipiul are șase sectoare cu bugete proprii.`:"";
   let h=`<b>${esc(u.name)}</b> · ${tipName(u.tip)}, jud. ${esc(JUD[u.cc])}<br>${fmt(u.pop)} locuitori (2021)`;
   if(u.fin) h+=`<br>${chip(u)} acoperire proprie ${pct(netRatio(u.fin))}<br>Venituri proprii: ${fmtLei(u.fin.v)} lei · funcționare: ${fmtLei(u.fin.f)} lei`;
   const zg = (S.mode==="summary"||S.mode==="edit"||S.mode==="auto") ? zoneIndex.get(u.key) : null;
   if(zg && zg.members.size>1 && u.fin){ const st=gStats(zg);
-    h+=`<hr style="border:0;border-top:1px solid var(--line);margin:6px 0">Zona <b>★ ${esc(byKey.get(st.seat).name)}</b>${u.key===st.seat?" · aici e reședința":` · ${km(u.key,st.seat).toFixed(0)} km până la reședință`}<br>${st.n} UAT, ${fmt(st.pop)} loc. · acoperire ${pct(st.coverNetNow)} → <b>${pct(st.coverNet)}</b>`; }
+    h+=`<hr>Zona <b>★ ${esc(byKey.get(st.seat).name)}</b>${u.key===st.seat?" · aici e reședința":` · ${km(u.key,st.seat).toFixed(0)} km până la reședință`}<br>${st.n} UAT, ${fmt(st.pop)} loc. · acoperire ${pct(st.coverNetNow)} → <b>${pct(st.coverNet)}</b>`; }
   else if(zg && S.mode==="summary") h+=`<br><i>Rămâne separată</i>`;
   return h;
 }
 function onUatClick(key){
   const u=byKey.get(key);
+  if(u&&u.layer&&!matchMedia("(hover:hover)").matches) showInfo(u,key,u.layer);
   if(S.mode==="summary"){ if(!S.cc){ S.cc=u.cc; render(); restyle(); fitFocus(); } return; }
   if(S.mode==="actual"){ S.selected=key; if(S.cc!==u.cc){ S.cc=u.cc; restyle(); } render(); panel.scrollTop=0; return; }
   if(S.mode==="auto"){ if(u.cc!==S.wcc){ S.wcc=u.cc; save(); restyle(); render(); fitFocus(); } return; }
