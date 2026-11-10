@@ -835,7 +835,10 @@ function shareSlug(){
   if(S.mode==="reg" && S.reg.v!=="custom") return `regiuni-${S.reg.v}-${S.sumT}`;
   return null;
 }
-function shareUrl(){ const s=shareSlug(); return s ? new URL(`${s}.html`, location.href.split("#")[0]).href : location.href; }
+function shareUrl(){ const s=shareSlug(); return s ? new URL(`${s}.html`, location.href.split("#")[0]).href : new URL(`./${stateHash()}`, location.href.split("#")[0]).href; }
+/* Adresa din bară e chiar pagina de distribuire a vederii (de ex. regiuni-dev-5000.html#regiuni/dev/5000):
+   oricum ar fi copiată (bara de adrese, butonul de partajare al browserului), Facebook primește titlul și poza corecte */
+function barUrl(){ const s=shareSlug(); return (s?`${s}.html`:"./")+stateHash(); }
 function viewTitle(){
   if(S.mode==="summary") return S.cc ? `${JUD[S.cc]}: zone de cel puțin ${fmt(S.sumT)} locuitori – România 2028` : `România: zone de cel puțin ${fmt(S.sumT)} locuitori – România 2028`;
   if(S.mode==="actual") return `${S.cc?JUD[S.cc]:"România"}: situația primăriilor azi – România 2028`;
@@ -843,7 +846,7 @@ function viewTitle(){
   if(S.mode==="reg") return `Regionalizare: ${S.reg.v==="custom"?"varianta proprie":REG.variante.find(v=>v.id===S.reg.v).name} – România 2028`;
   return "Surse și metodologie – România 2028";
 }
-function updateHash(){ try{ document.title=viewTitle(); }catch(e){} const h=stateHash(); if(location.hash!==h){ try{ history.replaceState(null,"",h); }catch(e){} } }
+function updateHash(){ try{ document.title=viewTitle(); }catch(e){} const u=new URL(barUrl(), location.href.split("#")[0]).href; if(location.href!==u){ try{ history.replaceState(null,"",u); }catch(e){} } }
 function applyHash(h){
   const p=decodeURIComponent((h||"").replace(/^#/,"")).split("/").filter(Boolean); if(!p.length||!H2MODE[p[0]]) return false;
   S.mode=H2MODE[p[0]];
