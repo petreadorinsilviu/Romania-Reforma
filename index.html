@@ -572,6 +572,12 @@ async function copy(text,btn){
   try{ await navigator.clipboard.writeText(text); btn.textContent="Copiat"; }catch(e){ btn.textContent="Copierea nu e permisă aici"; }
   setTimeout(()=>{btn.textContent=btn.dataset.label;},1800);
 }
+/* Linkul pentru Facebook: întâi în clipboard; unde copierea e blocată (de ex. în aplicația Facebook), meniul de partajare al telefonului; altfel, linkul afișat ca să fie copiat de mână */
+async function copyShare(url,btn){
+  try{ await navigator.clipboard.writeText(url); btn.textContent="Linkul a fost copiat"; setTimeout(()=>{btn.textContent=btn.dataset.label;},2200); return; }catch(e){}
+  if(navigator.share){ try{ await navigator.share({title:document.title,url}); return; }catch(e){ if(e&&e.name==="AbortError") return; } }
+  try{ window.prompt("Copiază linkul:",url); }catch(e){}
+}
 
 /* ============================================================
    7. PANOU LATERAL
@@ -826,7 +832,7 @@ function stateHash(){
 /* Paginile de distribuire (în rădăcina proiectului, fiecare cu poza ei .jpg): au titlul și poza vederii respective, ca Facebook să le arate corect */
 function shareSlug(){
   if(S.mode==="summary") return S.cc ? `judet-${norm(JUD[S.cc])}-${S.sumT}` : `tara-${S.sumT}`;
-  if(S.mode==="reg" && S.reg.v!=="custom") return `regiuni-${S.reg.v}`;
+  if(S.mode==="reg" && S.reg.v!=="custom") return `regiuni-${S.reg.v}-${S.sumT}`;
   return null;
 }
 function shareUrl(){ const s=shareSlug(); return s ? new URL(`${s}.html`, location.href.split("#")[0]).href : location.href; }
@@ -872,7 +878,7 @@ function bind(){
   $$("tr[data-cc]").forEach(tr=>{ const go=()=>{ S.cc=tr.dataset.cc; render(); restyle(); fitFocus(); panel.scrollTop=0; }; tr.onclick=go; tr.onkeydown=e=>{ if(e.key==="Enter") go(); }; });
   $$("tr[data-k]").forEach(tr=>{ const go=()=>{ const u=byKey.get(tr.dataset.k); S.selected=u.key; render(); panel.scrollTop=0; if(u.layer&&map) map.fitBounds(u.layer.getBounds(),{maxZoom:11}); }; tr.onclick=go; tr.onkeydown=e=>{ if(e.key==="Enter") go(); }; });
   $$(".zrow,.crow").forEach(el=>el.onclick=()=>{ const z=countyZones(S.cc,S.sumT).find(x=>x.id===el.dataset.z); if(!z) return; const b=L.latLngBounds([]); z.members.forEach(k=>{const l=byKey.get(k).layer; if(l) b.extend(l.getBounds());}); if(b.isValid()) map.fitBounds(b,{maxZoom:11,padding:[30,30]}); });
-  const sh=$("#share"); if(sh) sh.onclick=()=>copy(shareUrl(),sh);
+  const sh=$("#share"); if(sh) sh.onclick=()=>copyShare(shareUrl(),sh);
   const ge=$("#goEdit"); if(ge) ge.onclick=()=>{ S.mode="edit"; if(S.cc){ S.wcc=S.cc; S.groupsBy[S.wcc]=countyZones(S.wcc,S.sumT).map(z=>({...z,members:new Set(z.members)})); } S.activeGroup=null; clearCaches(); save(); render(); restyle(); fitFocus(); };
   const gm=$("#goMap"); if(gm) gm.onclick=()=>{ S.mode="actual"; render(); restyle(); };
   const q=$("#q"); if(q){ q.oninput=e=>{ S.q=e.target.value; const pos=e.target.selectionStart; render(); const nq=$("#q"); nq.focus(); try{nq.setSelectionRange(pos,pos);}catch(_){} }; }
