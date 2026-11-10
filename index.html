@@ -811,6 +811,30 @@ function dataHtml(){
     <p class="note">Aplicația extinde la toată țara simulatorul <a href="https://petreadorinsilviu.github.io/Braila-Reforma/" target="_blank" rel="noopener">Brăila 2028</a>. Ideea unei hărți interactive a comasării UAT pornește de la proiectul <a href="https://cosettechichirau.github.io/reformaadm/" target="_blank" rel="noopener">Reformă Administrativă</a> al lui Cosette Chichirău.</p>
     <p class="note">Fișierele de date sunt alături de pagină, în proiect: <code>uat_2025.json</code>, <code>date_transparenta_2025.tsv</code> (indicatorii pe CIF și SIRUTA), <code>scenarii.json</code>, <code>regiuni.json</code> (bugetele consiliilor județene și variantele de regiuni), <code>ro_uat.topojson</code>.</p></div>`;
 }
+/* ---------- Adresa paginii: fila și alegerile curente apar după #, ca un link să deschidă exact aceeași vedere ----------
+   #propunere[/JUD]/PRAG · #harta[/JUD] · #zone/JUD · #automat/JUD · #regiuni/VARIANTA/PRAG · #surse */
+const MODE2H={summary:"propunere",actual:"harta",edit:"zone",auto:"automat",reg:"regiuni",data:"surse"};
+const H2MODE=Object.fromEntries(Object.entries(MODE2H).map(([k,v])=>[v,k]));
+function stateHash(){
+  const m=MODE2H[S.mode]; let parts=[m];
+  if(S.mode==="summary"){ if(S.cc) parts.push(S.cc); parts.push(S.sumT); }
+  else if(S.mode==="actual"){ if(S.cc) parts.push(S.cc); }
+  else if(S.mode==="edit"||S.mode==="auto") parts.push(S.wcc);
+  else if(S.mode==="reg"){ parts.push(S.reg.v); parts.push(S.sumT); }
+  return "#"+parts.join("/");
+}
+function updateHash(){ const h=stateHash(); if(location.hash!==h){ try{ history.replaceState(null,"",h); }catch(e){} } }
+function applyHash(h){
+  const p=decodeURIComponent((h||"").replace(/^#/,"")).split("/").filter(Boolean); if(!p.length||!H2MODE[p[0]]) return false;
+  S.mode=H2MODE[p[0]];
+  for(const x of p.slice(1)){
+    if(/^\d+$/.test(x)&&PRAGURI.includes(+x)) S.sumT=+x;
+    else if(CCS.includes(x)){ if(S.mode==="edit"||S.mode==="auto") S.wcc=x; else S.cc=x; }
+    else if(S.mode==="reg"&&(REG.variante.some(v=>v.id===x)||x==="custom")) S.reg.v = x==="custom"&&!S.reg.custom.length ? "dev" : x;
+  }
+  if(S.mode==="summary"||S.mode==="actual"){ if(!p.slice(1).some(x=>CCS.includes(x))) S.cc=null; }
+  return true;
+}
 function render(){
   document.querySelectorAll("nav button").forEach(b=>b.setAttribute("aria-selected",String(b.dataset.mode===S.mode)));
   if(!UAT.length) return;
@@ -820,7 +844,7 @@ function render(){
   else if(S.mode==="auto") panel.innerHTML=autoHtml();
   else if(S.mode==="reg") panel.innerHTML=regHtml();
   else panel.innerHTML=dataHtml();
-  bind();
+  bind(); updateHash();
 }
 function bind(){
   const $=s=>panel.querySelector(s), $$=s=>panel.querySelectorAll(s);
@@ -1173,7 +1197,9 @@ async function getJSON(p){ const r=await fetch(p); if(!r.ok) throw new Error(p+"
     TOPO=topo; OBJ=topo.objects[Object.keys(topo.objects)[0]];
     load();
     if(!CCS.includes(S.wcc)) S.wcc="BR";
+    applyHash(location.hash);
     indexZones(); render();
+    window.addEventListener("hashchange",()=>{ if(location.hash!==stateHash()&&applyHash(location.hash)){ clearCaches(); render(); restyle(); fitFocus(); } });
     drawGeo(); restyle();
   }catch(e){
     console.error(e);
