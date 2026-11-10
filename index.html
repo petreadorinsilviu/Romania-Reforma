@@ -823,13 +823,13 @@ function stateHash(){
   else if(S.mode==="reg"){ parts.push(S.reg.v); parts.push(S.sumT); }
   return "#"+parts.join("/");
 }
-/* Paginile de distribuire (folderul distribuie/): au titlul și poza vederii respective, ca Facebook să le arate corect */
+/* Paginile de distribuire (în rădăcina proiectului, fiecare cu poza ei .jpg): au titlul și poza vederii respective, ca Facebook să le arate corect */
 function shareSlug(){
   if(S.mode==="summary") return S.cc ? `judet-${norm(JUD[S.cc])}-${S.sumT}` : `tara-${S.sumT}`;
   if(S.mode==="reg" && S.reg.v!=="custom") return `regiuni-${S.reg.v}`;
   return null;
 }
-function shareUrl(){ const s=shareSlug(); return s ? new URL(`distribuie/${s}.html`, location.href.split("#")[0]).href : location.href; }
+function shareUrl(){ const s=shareSlug(); return s ? new URL(`${s}.html`, location.href.split("#")[0]).href : location.href; }
 function viewTitle(){
   if(S.mode==="summary") return S.cc ? `${JUD[S.cc]}: zone de cel puțin ${fmt(S.sumT)} locuitori – România 2028` : `România: zone de cel puțin ${fmt(S.sumT)} locuitori – România 2028`;
   if(S.mode==="actual") return `${S.cc?JUD[S.cc]:"România"}: situația primăriilor azi – România 2028`;
