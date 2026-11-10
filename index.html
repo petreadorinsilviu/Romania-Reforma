@@ -643,7 +643,7 @@ function nationalHtml(){
     </tbody></table></div>
     <p class="note">Acoperire: cât din funcționarea proprie (fără învățământ și asistență socială finanțate din TVA) plătesc zonele din afara municipiilor din venituri proprii, azi → după comasare. Atinge un județ ca să-i vezi zonele.</p>
   </div>
-  <div class="row"><button class="btn primary" id="goEdit">Modifică zonele unui județ</button><button class="btn" id="goMap">Vezi situația de azi</button></div>
+  <div class="row"><button class="btn primary" id="goEdit">Modifică zonele unui județ</button><button class="btn" id="goMap">Vezi situația de azi</button><button class="btn" id="share" data-label="Copiază linkul pentru Facebook">Copiază linkul pentru Facebook</button></div>
   <p class="note">Date: execuția bugetară la 31.12.2025 a fiecărei primării (rapoartele Ministerului Finanțelor, preluate prin transparenta.eu); INS, RPL 2021. Metodologia este în fila Surse.</p>`;
 }
 /* ---------- Propunerea: un județ ---------- */
@@ -674,7 +674,7 @@ function countyHtml(cc){
     <li>Întregul județ, cu municipii cu tot, acoperă azi ${pct(allNow[0]/allNow[1])} din funcționarea proprie.</li>
     <li>Reședința propusă e marcată cu ★; o poți schimba în fila Construiește zone.</li>
   </ul></div>
-  <div class="row"><button class="btn primary" id="goEdit">Modifică zonele</button><button class="btn" id="dl" data-label="Descarcă CSV">Descarcă CSV</button><button class="btn" id="cp" data-label="Copiază tabelul">Copiază tabelul</button></div>`;
+  <div class="row"><button class="btn primary" id="goEdit">Modifică zonele</button><button class="btn" id="dl" data-label="Descarcă CSV">Descarcă CSV</button><button class="btn" id="cp" data-label="Copiază tabelul">Copiază tabelul</button><button class="btn" id="share" data-label="Copiază linkul pentru Facebook">Copiază linkul pentru Facebook</button></div>`;
 }
 
 function indicatorsHtml(st){
@@ -823,7 +823,21 @@ function stateHash(){
   else if(S.mode==="reg"){ parts.push(S.reg.v); parts.push(S.sumT); }
   return "#"+parts.join("/");
 }
-function updateHash(){ const h=stateHash(); if(location.hash!==h){ try{ history.replaceState(null,"",h); }catch(e){} } }
+/* Paginile de distribuire (folderul distribuie/): au titlul și poza vederii respective, ca Facebook să le arate corect */
+function shareSlug(){
+  if(S.mode==="summary") return S.cc ? `judet-${norm(JUD[S.cc])}-${S.sumT}` : `tara-${S.sumT}`;
+  if(S.mode==="reg" && S.reg.v!=="custom") return `regiuni-${S.reg.v}`;
+  return null;
+}
+function shareUrl(){ const s=shareSlug(); return s ? new URL(`distribuie/${s}.html`, location.href.split("#")[0]).href : location.href; }
+function viewTitle(){
+  if(S.mode==="summary") return S.cc ? `${JUD[S.cc]}: zone de cel puțin ${fmt(S.sumT)} locuitori – România 2028` : `România: zone de cel puțin ${fmt(S.sumT)} locuitori – România 2028`;
+  if(S.mode==="actual") return `${S.cc?JUD[S.cc]:"România"}: situația primăriilor azi – România 2028`;
+  if(S.mode==="edit"||S.mode==="auto") return `${JUD[S.wcc]}: zone construite – România 2028`;
+  if(S.mode==="reg") return `Regionalizare: ${S.reg.v==="custom"?"varianta proprie":REG.variante.find(v=>v.id===S.reg.v).name} – România 2028`;
+  return "Surse și metodologie – România 2028";
+}
+function updateHash(){ try{ document.title=viewTitle(); }catch(e){} const h=stateHash(); if(location.hash!==h){ try{ history.replaceState(null,"",h); }catch(e){} } }
 function applyHash(h){
   const p=decodeURIComponent((h||"").replace(/^#/,"")).split("/").filter(Boolean); if(!p.length||!H2MODE[p[0]]) return false;
   S.mode=H2MODE[p[0]];
@@ -858,6 +872,7 @@ function bind(){
   $$("tr[data-cc]").forEach(tr=>{ const go=()=>{ S.cc=tr.dataset.cc; render(); restyle(); fitFocus(); panel.scrollTop=0; }; tr.onclick=go; tr.onkeydown=e=>{ if(e.key==="Enter") go(); }; });
   $$("tr[data-k]").forEach(tr=>{ const go=()=>{ const u=byKey.get(tr.dataset.k); S.selected=u.key; render(); panel.scrollTop=0; if(u.layer&&map) map.fitBounds(u.layer.getBounds(),{maxZoom:11}); }; tr.onclick=go; tr.onkeydown=e=>{ if(e.key==="Enter") go(); }; });
   $$(".zrow,.crow").forEach(el=>el.onclick=()=>{ const z=countyZones(S.cc,S.sumT).find(x=>x.id===el.dataset.z); if(!z) return; const b=L.latLngBounds([]); z.members.forEach(k=>{const l=byKey.get(k).layer; if(l) b.extend(l.getBounds());}); if(b.isValid()) map.fitBounds(b,{maxZoom:11,padding:[30,30]}); });
+  const sh=$("#share"); if(sh) sh.onclick=()=>copy(shareUrl(),sh);
   const ge=$("#goEdit"); if(ge) ge.onclick=()=>{ S.mode="edit"; if(S.cc){ S.wcc=S.cc; S.groupsBy[S.wcc]=countyZones(S.wcc,S.sumT).map(z=>({...z,members:new Set(z.members)})); } S.activeGroup=null; clearCaches(); save(); render(); restyle(); fitFocus(); };
   const gm=$("#goMap"); if(gm) gm.onclick=()=>{ S.mode="actual"; render(); restyle(); };
   const q=$("#q"); if(q){ q.oninput=e=>{ S.q=e.target.value; const pos=e.target.selectionStart; render(); const nq=$("#q"); nq.focus(); try{nq.setSelectionRange(pos,pos);}catch(_){} }; }
@@ -1141,7 +1156,7 @@ function regHtml(){
     <div class="section"><h2>${rs.length} ${unitWord(null,rs.length)} <span class="note">${custom?"":"de la cea mai mare la cea mai mică"}</span></h2><div class="groups">${sorted.map(regCard).join("")}</div>
       <p class="note">Acoperire proprie: cât din funcționare plătesc primăriile și consiliul județean din venituri proprii (fără învățământul și asistența socială finanțate din TVA), azi → după comasarea consiliilor județene.</p></div>
     <div class="section"><h2>Compară variantele</h2>${regCompare()}</div>
-    <div class="row"><button class="btn" id="dl" data-label="Descarcă CSV">Descarcă CSV</button><button class="btn" id="cp" data-label="Copiază tabelul">Copiază tabelul</button></div>`;
+    <div class="row"><button class="btn" id="dl" data-label="Descarcă CSV">Descarcă CSV</button><button class="btn" id="cp" data-label="Copiază tabelul">Copiază tabelul</button>${S.reg.v!=="custom"?'<button class="btn" id="share" data-label="Copiază linkul pentru Facebook">Copiază linkul pentru Facebook</button>':""}</div>`;
 }
 function regCSV(){
   const rs=curRegions().filter(r=>r.ccs.size), vname=S.reg.v==="custom"?"Varianta proprie":REG.variante.find(x=>x.id===S.reg.v).name;
