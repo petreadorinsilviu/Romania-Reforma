@@ -192,6 +192,7 @@ details.ip summary{cursor:pointer;font-weight:600;font-size:13px}
       <button role="tab" data-mode="actual" aria-selected="false">Hartă actuală</button>
       <button role="tab" data-mode="edit" aria-selected="false">Construiește zone</button>
       <button role="tab" data-mode="auto" aria-selected="false">Propunere automată</button>
+      <button role="tab" data-mode="reg" aria-selected="false">Regiuni</button>
       <button role="tab" data-mode="data" aria-selected="false">Surse</button>
     </nav>
     <div class="body" id="panel"><p class="note">Se încarcă datele…</p></div>
@@ -218,6 +219,7 @@ details.ip summary{cursor:pointer;font-weight:600;font-size:13px}
    tv  = total venituri; tc = total cheltuieli
    ============================================================ */
 const BUC = "179132";               // Municipiul București: nu intră în simulare (are sectoare cu bugete proprii)
+let REG=null, CUN=new Map(), CADJ=new Map(), BUCU=null, regOf=new Map();
 let UAT=[], byKey=new Map(), ADJ=new Map(), JUD={}, CCS=[], SCEN={}, TOPO=null, OBJ=null;
 const PALETTE = ["#8fb8e8","#f6c177","#9ed6a5","#f3a59a","#c3a8e6","#86d1cc","#f2b6d2","#c8d68a","#e8b98f","#a9bfd6","#e6a3bd","#b4dcf0","#d9c99a","#a8cdb6"];
 const NCAT = [
@@ -247,9 +249,13 @@ const S = {
   sumT:5000, threshold:5000,
   groupsBy:{},          // {cc:[{id,name,seat,color,members:Set}]}
   activeGroup:null, selected:null, openGroup:null, appliedSc:{},
-  ip:{}, q:""
+  ip:{}, q:"",
+  reg:{v:"dev", cap:{}, custom:[], active:null, sel:null, cov:false},   // Regiuni: varianta, capitalele alese, regiunile construite manual
+  ipR:{}
 };
 const CAM = 1.0225;
+/* Ipoteze pentru comasarea consiliilor județene (lei brut/lună, valori aproximative 2025, modificabile în aplicație) */
+const IPR_DEF = {presedinte:19000, vice:16000, secretar:14000, admin:14000, cabinet:4, salariu:9000, dubluri:20, consilier:1900, functionare:1500000, armonizare:5, prefect:0};
 const IPOTEZE_DEF = {primar:15000, viceprimar:10600, secretar:12000, posturi:3, salariu:9000, consilier:1200, plafon:60, functionare:120000, armonizare:5, colectare:0};
 
 /* ============================================================
@@ -265,11 +271,13 @@ function pct(x){ return isNaN(x)||!isFinite(x)?"–":(x*100).toFixed(0)+"%"; }
 function pct1(x){ return isNaN(x)||!isFinite(x)?"–":(x*100).toLocaleString("ro-RO",{minimumFractionDigits:1,maximumFractionDigits:1})+"%"; }
 function norm(s){ return String(s||"").normalize("NFD").replace(/[̀-ͯ]/g,"").toLowerCase().replace(/[^a-z0-9]/g,""); }
 const tipName=t=>t==="M"?"municipiu":t==="O"?"oraș":"comună";
-function save(){ try{ localStorage.setItem("ro2028.v1",JSON.stringify({sumT:S.sumT,threshold:S.threshold,metric:S.metric,colorBy:S.colorBy,wcc:S.wcc,ip:S.ip,appliedSc:S.appliedSc,
+function save(){ try{ localStorage.setItem("ro2028.v1",JSON.stringify({reg:{...S.reg,active:null,sel:null,custom:S.reg.custom.map(r=>({...r,ccs:[...r.ccs]}))},ipR:S.ipR,sumT:S.sumT,threshold:S.threshold,metric:S.metric,colorBy:S.colorBy,wcc:S.wcc,ip:S.ip,appliedSc:S.appliedSc,
   groupsBy:Object.fromEntries(Object.entries(S.groupsBy).map(([cc,gs])=>[cc,gs.map(g=>({...g,members:[...g.members]}))]))})); }catch(e){} }
 function load(){ try{ const o=JSON.parse(localStorage.getItem("ro2028.v1")||"null"); if(!o) return;
   for(const k of ["sumT","threshold","metric","colorBy","wcc","appliedSc"]) if(o[k]!=null) S[k]=o[k];
   if(o.ip) S.ip={...IPOTEZE_DEF,...o.ip};
+  if(o.ipR) S.ipR={...IPR_DEF,...o.ipR};
+  if(o.reg){ S.reg={...S.reg,...o.reg,active:null,sel:null}; S.reg.custom=(o.reg.custom||[]).map(r=>({...r,ccs:new Set((r.ccs||[]).filter(c=>CUN.has(c)))})); }
   if(o.groupsBy) for(const [cc,gs] of Object.entries(o.groupsBy)) S.groupsBy[cc]=gs.map(g=>({...g,members:new Set(g.members.filter(k=>byKey.has(k)))}));
   }catch(e){} }
 
@@ -316,7 +324,8 @@ function seatOf(keys,pref){
    Opțional: creșterea colectării impozitelor și taxelor locale (implicit 0%). */
 function nrConsilieri(p){ for(const [lim,n] of [[1500,9],[3000,11],[5000,13],[10000,15],[20000,17],[50000,19],[100000,21],[200000,23]]) if(p<=lim) return n; return 27; }
 function stratConducere(u){ const I=S.ip; const s=(I.primar+I.viceprimar+I.secretar+I.posturi*I.salariu)*12*CAM; return Math.min(s, I.plafon/100*u.fin.pa); }
-const statCache=new Map();
+const statCache=new Map(), uatTot=new Map(), regCache=new Map();
+function clearCaches(){ statCache.clear(); uatTot.clear(); regCache.clear(); }
 function groupStats(keys,seatPref){
   keys = keys instanceof Set ? keys : new Set(keys);
   const ck=[...keys].sort().join(",")+"|"+(seatPref||"");
@@ -416,9 +425,10 @@ function shownZones(){
   return null;
 }
 let zoneIndex=new Map();
-function indexZones(){ zoneIndex=new Map(); const zs=shownZones(); if(zs) for(const z of zs) for(const k of z.members) zoneIndex.set(k,z); }
-function focusCC(){ return S.mode==="edit"||S.mode==="auto" ? S.wcc : S.cc; }
-function styleFor(u){
+function indexZones(){ if(S.mode==="reg") indexRegions(); zoneIndex=new Map(); const zs=shownZones(); if(zs) for(const z of zs) for(const k of z.members) zoneIndex.set(k,z); }
+function focusCC(){ return S.mode==="reg" ? null : S.mode==="edit"||S.mode==="auto" ? S.wcc : S.cc; }
+function styleFor(u,id){
+  if(S.mode==="reg") return regStyle(u?u.cc:(id===BUC?"B":null));
   if(!u) return {color:"#8a918d",weight:.4,opacity:.6,fillColor:"#c9ccc7",fillOpacity:.35};
   const fcc=focusCC(); const out = fcc && u.cc!==fcc;
   let fill="#c9ccc7", op=.82;
@@ -434,8 +444,9 @@ function styleFor(u){
 function drawGeo(){
   const fc=topojson.feature(TOPO,OBJ);
   geoLayer=L.geoJSON(fc,{renderer,
-    style:f=>styleFor(byKey.get(String(f.id))),
+    style:f=>styleFor(byKey.get(String(f.id)),String(f.id)),
     onEachFeature:(f,layer)=>{ const u=byKey.get(String(f.id)); if(u){ u.layer=layer; layer.on("click",()=>onUatClick(u.key)); }
+      else if(String(f.id)===BUC){ if(BUCU) BUCU.layer=layer; layer.on("click",()=>{ if(S.mode==="reg") onRegClick("B"); }); }
       layer.on("mouseover",()=>showInfo(u,String(f.id),layer));
       layer.on("mouseout",()=>hideInfo(layer)); }
   }).addTo(map);
@@ -457,6 +468,16 @@ function fitFocus(){
 /* Granițele noilor zone: segmentele de contur dintre UAT aflate în zone diferite (topologie comună) */
 function drawLines(){
   if(!map||!geoLayer) return; if(lineLayer) lineLayer.remove(); lineLayer=null;
+  if(countyLayer) countyLayer.setStyle(S.mode==="reg"?{weight:.9,opacity:.55}:{weight:1.6,opacity:.85});
+  if(S.mode==="reg"){
+    const rid=id=>{ const r=regOf.get(ccOfId(id)); return r?r.id:"-"+ccOfId(id); };
+    const mesh=topojson.mesh(TOPO,OBJ,(a,b)=>a!==b && rid(a.id)!==rid(b.id));
+    lineLayer=L.layerGroup([
+      L.geoJSON(mesh,{renderer,interactive:false,style:{color:"#ffffff",weight:5,opacity:.85}}),
+      L.geoJSON(mesh,{renderer,interactive:false,style:{color:"#14213d",weight:2.6,opacity:.95}})
+    ]).addTo(map);
+    return;
+  }
   if(!(S.mode==="summary"||S.mode==="edit"||S.mode==="auto")) return;
   const fcc=focusCC();
   const zid=id=>{ const z=zoneIndex.get(String(id)); return z?z.id:"u"+id; };
@@ -472,7 +493,7 @@ function drawLines(){
 function restyle(onlyStyle){
   if(!geoLayer) return;
   if(!onlyStyle) indexZones();
-  geoLayer.eachLayer(l=>l.setStyle(styleFor(byKey.get(String(l.feature.id)))));
+  geoLayer.eachLayer(l=>l.setStyle(styleFor(byKey.get(String(l.feature.id)),String(l.feature.id))));
   if(!onlyStyle) drawLines();
 }
 /* Caseta de informații: fixă în colțul din dreapta sus al hărții, ca să nu acopere județul */
@@ -485,11 +506,12 @@ function showInfo(u,id,layer){
   hovered=layer; layer.setStyle({weight:3,color:"#000",opacity:1});
 }
 function hideInfo(layer,keepBox){
-  if(layer){ layer.setStyle(styleFor(byKey.get(String(layer.feature.id)))); }
+  if(layer){ layer.setStyle(styleFor(byKey.get(String(layer.feature.id)),String(layer.feature.id))); }
   if(hovered===layer) hovered=null;
   if(!keepBox) infobox().hidden=true;
 }
 function tooltipHtml(u,id){
+  if(S.mode==="reg") return regTooltip(u,id);
   if(!u) return id===BUC?`<b>București</b><br>Nu intră în simulare: municipiul are șase sectoare cu bugete proprii.`:"";
   let h=`<b>${esc(u.name)}</b> · ${tipName(u.tip)}, jud. ${esc(JUD[u.cc])}<br>${fmt(u.pop)} locuitori (2021)`;
   if(u.fin) h+=`<br>${chip(u)} acoperire proprie ${pct(netRatio(u.fin))}<br>Venituri proprii: ${fmtLei(u.fin.v)} lei · funcționare: ${fmtLei(u.fin.f)} lei`;
@@ -502,6 +524,7 @@ function tooltipHtml(u,id){
 function onUatClick(key){
   const u=byKey.get(key);
   if(u&&u.layer&&!matchMedia("(hover:hover)").matches) showInfo(u,key,u.layer);
+  if(S.mode==="reg"){ onRegClick(u.cc); return; }
   if(S.mode==="summary"){ if(!S.cc){ S.cc=u.cc; render(); restyle(); fitFocus(); } return; }
   if(S.mode==="actual"){ S.selected=key; if(S.cc!==u.cc){ S.cc=u.cc; restyle(); } render(); panel.scrollTop=0; return; }
   if(S.mode==="auto"){ if(u.cc!==S.wcc){ S.wcc=u.cc; save(); restyle(); render(); fitFocus(); } return; }
@@ -511,7 +534,7 @@ function onUatClick(key){
   const g=groups().find(x=>x.id===S.activeGroup); const prev=groupOf(key);
   if(prev===g){ prev.members.delete(key); }
   else { if(prev) prev.members.delete(key); g.members.add(key); }
-  cleanupGroups(); statCache.clear(); save(); restyle(); render();
+  cleanupGroups(); clearCaches(); save(); restyle(); render();
 }
 
 /* ============================================================
@@ -529,7 +552,7 @@ function presetGroups(zones){
   S.groupsBy[S.wcc]=zones.map((z,i)=>({id:"p"+i+"_"+Date.now().toString(36),name:z.name,seat:z.seat,color:z.color||PALETTE[i%PALETTE.length],members:new Set(z.members)}));
   const used=new Set(groups().flatMap(g=>[...g.members]));
   unitsOf(S.wcc).filter(u=>!used.has(u.key)).forEach((u,i)=>groups().push({id:"r"+i,name:u.name,seat:u.key,color:"#9aa0a6",members:new Set([u.key])}));
-  S.activeGroup=null; statCache.clear(); save(); restyle(); render();
+  S.activeGroup=null; clearCaches(); save(); restyle(); render();
 }
 function ensureGroups(){ if(!S.groupsBy[S.wcc]||!S.groupsBy[S.wcc].length) S.groupsBy[S.wcc]=countyZones(S.wcc,S.sumT).map(z=>({...z,members:new Set(z.members)})); }
 
@@ -783,9 +806,10 @@ function dataHtml(){
     <p class="note"><b>Aparatul primăriei</b> = cheltuieli de personal ale autorităților executive (cap. 51.01, titlul 10). <b>Funcționare</b> = secțiunea de funcționare a bugetului. <b>Cheltuieli descentralizate</b> = sume defalcate din TVA (11.02) pentru învățământ, asistență socială și protecția copilului; în varianta recomandată sunt scoase din funcționare.</p>
     <p class="note"><b>Economia la comasare</b>, pentru fiecare primărie absorbită (reședința rămâne integral): dispar primarul, viceprimarul, secretarul general și ${IPOTEZE_DEF.posturi} posturi de suport dublate, plafonat la ${IPOTEZE_DEF.plafon}% din aparatul acelei primării; scade numărul de consilieri locali după art. 112 din Codul administrativ; dispar ${fmt(IPOTEZE_DEF.functionare)} lei/an costuri proprii ale unei primării separate; se scade armonizarea salarială de ${IPOTEZE_DEF.armonizare}% pe personalul preluat. Ipotezele se pot modifica.</p>
     <p class="note"><b>Propunerea automată</b>: pentru fiecare județ și prag, un model de programare liniară în numere întregi (HiGHS) aplică în ordine criteriile: (1) fiecare zonă are cel puțin pragul de populație, iar numărul de zone e maxim; (2) zonele sunt continue (fiecare comună are în zonă o vecină mai apropiată de reședință); (3) suma populație × distanța în linie dreaptă până la reședință e minimă; (4) dintre soluțiile cel mult 5% mai puțin compacte, o căutare locală ridică acoperirea celei mai slabe zone. La pragurile de 7.500 – 15.000, în județele mari, modelul pornește de la o soluție construită euristic (creștere de regiuni și mutări la graniță), pe care o poate doar îmbunătăți, cu o limită de timp; rezultatul e foarte bun, dar nu garantat optim. Zonele nu trec granița județului. Pentru Brăila sunt păstrate scenariile din simulatorul Brăila 2028. Pe Brăila, metoda reproduce exact varianta de 3.000 de locuitori și numărul maxim de zone la toate pragurile testate.</p>
+    <p class="note"><b>Regionalizarea</b> (fila Regiuni) pornește de la județele întregi: o regiune e formată din județe vecine, iar consiliile județene se comasează într-un singur consiliu, cu sediul în capitala aleasă. Variantele: cele 8 regiuni de dezvoltare din Legea 315/2004; 8 regiuni istorice aproximate pe granițele județelor; 21 de județe mari, prin comasarea județelor vecine din aceeași regiune de dezvoltare (variantă care nu cere modificarea Constituției); poți construi și o variantă proprie. Bugetele consiliilor județene sunt din execuția bugetară 2025, cu aceiași indicatori ca la primării. Economia, pentru fiecare consiliu județean absorbit: dispare conducerea (președinte, 2 vicepreședinți, secretar general, administrator public, cabinet), dispar ${IPR_DEF.dubluri}% din restul aparatului (compartimentele dublate), scade numărul de consilieri după art. 180 din Codul administrativ aplicat populației regiunii, dispar ${fmt(IPR_DEF.functionare)} lei/an costuri proprii ale unei instituții separate și se scade armonizarea salarială de ${IPR_DEF.armonizare}%. Salariile sunt aproximative; toate ipotezele se pot modifica. Instituțiile prefectului și serviciile deconcentrate (bugetul de stat) nu sunt incluse decât dacă introduci o estimare.</p>
     <p class="note"><b>Populație:</b> INS, Recensământul Populației și Locuințelor 2021, populația rezidentă pe UAT. <b>Contururi:</b> limitele UAT de la <a href="https://www.geo-spatial.org/" target="_blank" rel="noopener">geo-spatial.org</a> (ANCPI), simplificate; Victoria (BV), Bălan și Băile Tușnad completate din OpenStreetMap. <b>Vecinătăți:</b> graniță comună de cel puțin 200 m. <b>București</b> nu intră în simulare (șase sectoare cu bugete proprii).</p>
     <p class="note">Aplicația extinde la toată țara simulatorul <a href="https://petreadorinsilviu.github.io/Braila-Reforma/" target="_blank" rel="noopener">Brăila 2028</a>. Ideea unei hărți interactive a comasării UAT pornește de la proiectul <a href="https://cosettechichirau.github.io/reformaadm/" target="_blank" rel="noopener">Reformă Administrativă</a> al lui Cosette Chichirău.</p>
-    <p class="note">Fișierele de date sunt alături de pagină, în proiect: <code>uat_2025.json</code>, <code>date_transparenta_2025.tsv</code> (indicatorii pe CIF și SIRUTA), <code>scenarii.json</code>, <code>ro_uat.topojson</code>.</p></div>`;
+    <p class="note">Fișierele de date sunt alături de pagină, în proiect: <code>uat_2025.json</code>, <code>date_transparenta_2025.tsv</code> (indicatorii pe CIF și SIRUTA), <code>scenarii.json</code>, <code>regiuni.json</code> (bugetele consiliilor județene și variantele de regiuni), <code>ro_uat.topojson</code>.</p></div>`;
 }
 function render(){
   document.querySelectorAll("nav button").forEach(b=>b.setAttribute("aria-selected",String(b.dataset.mode===S.mode)));
@@ -794,6 +818,7 @@ function render(){
   else if(S.mode==="actual") panel.innerHTML=actualHtml();
   else if(S.mode==="edit") panel.innerHTML=editHtml();
   else if(S.mode==="auto") panel.innerHTML=autoHtml();
+  else if(S.mode==="reg") panel.innerHTML=regHtml();
   else panel.innerHTML=dataHtml();
   bind();
 }
@@ -809,7 +834,7 @@ function bind(){
   $$("tr[data-cc]").forEach(tr=>{ const go=()=>{ S.cc=tr.dataset.cc; render(); restyle(); fitFocus(); panel.scrollTop=0; }; tr.onclick=go; tr.onkeydown=e=>{ if(e.key==="Enter") go(); }; });
   $$("tr[data-k]").forEach(tr=>{ const go=()=>{ const u=byKey.get(tr.dataset.k); S.selected=u.key; render(); panel.scrollTop=0; if(u.layer&&map) map.fitBounds(u.layer.getBounds(),{maxZoom:11}); }; tr.onclick=go; tr.onkeydown=e=>{ if(e.key==="Enter") go(); }; });
   $$(".zrow,.crow").forEach(el=>el.onclick=()=>{ const z=countyZones(S.cc,S.sumT).find(x=>x.id===el.dataset.z); if(!z) return; const b=L.latLngBounds([]); z.members.forEach(k=>{const l=byKey.get(k).layer; if(l) b.extend(l.getBounds());}); if(b.isValid()) map.fitBounds(b,{maxZoom:11,padding:[30,30]}); });
-  const ge=$("#goEdit"); if(ge) ge.onclick=()=>{ S.mode="edit"; if(S.cc){ S.wcc=S.cc; S.groupsBy[S.wcc]=countyZones(S.wcc,S.sumT).map(z=>({...z,members:new Set(z.members)})); } S.activeGroup=null; statCache.clear(); save(); render(); restyle(); fitFocus(); };
+  const ge=$("#goEdit"); if(ge) ge.onclick=()=>{ S.mode="edit"; if(S.cc){ S.wcc=S.cc; S.groupsBy[S.wcc]=countyZones(S.wcc,S.sumT).map(z=>({...z,members:new Set(z.members)})); } S.activeGroup=null; clearCaches(); save(); render(); restyle(); fitFocus(); };
   const gm=$("#goMap"); if(gm) gm.onclick=()=>{ S.mode="actual"; render(); restyle(); };
   const q=$("#q"); if(q){ q.oninput=e=>{ S.q=e.target.value; const pos=e.target.selectionStart; render(); const nq=$("#q"); nq.focus(); try{nq.setSelectionRange(pos,pos);}catch(_){} }; }
   const cs=$("#closeSel"); if(cs) cs.onclick=()=>{ S.selected=null; render(); };
@@ -822,20 +847,21 @@ function bind(){
   /* Construiește zone */
   const b5=$("#b5"); if(b5) b5.onclick=()=>presetGroups(countyZones(S.wcc,S.sumT));
   const bo=$("#bo"); if(bo) bo.onclick=()=>presetGroups(mkZones("BR",PRESET_VECHI_BR));
-  const bs=$("#bs"); if(bs) bs.onclick=()=>{ singletons(); S.activeGroup=null; statCache.clear(); save(); restyle(); render(); };
+  const bs=$("#bs"); if(bs) bs.onclick=()=>{ singletons(); S.activeGroup=null; clearCaches(); save(); restyle(); render(); };
   const bn=$("#bn"); if(bn) bn.onclick=()=>{ const gs=groups(); const g={id:"n"+Date.now().toString(36),name:"Grupare nouă",color:PALETTE[gs.length%PALETTE.length],members:new Set()}; gs.push(g); S.activeGroup=g.id; render(); };
   $$(".group[data-g]").forEach(el=>{ el.onclick=e=>{ if(e.target.closest("[data-stop]")) return;
     if(S.mode==="edit"){ S.activeGroup=S.activeGroup===el.dataset.g?null:el.dataset.g; restyle(); render(); }
     else { S.openGroup=S.openGroup===el.dataset.g?null:el.dataset.g; render(); } }; });
   $$(".rename").forEach(inp=>{ inp.onclick=e=>e.stopPropagation(); inp.onchange=e=>{ const g=groups().find(x=>x.id===inp.dataset.g); g.name=e.target.value||g.name; save(); }; });
-  $$(".seatsel").forEach(sel=>{ sel.onclick=e=>e.stopPropagation(); sel.onchange=e=>{ const g=groups().find(x=>x.id===sel.dataset.g); g.seat=e.target.value; g.name=byKey.get(g.seat).name; statCache.clear(); save(); restyle(); render(); }; });
-  $$("[data-ip]").forEach(inp=>{ inp.onchange=e=>{ const v=parseFloat(e.target.value); if(!isNaN(v)&&v>=0){ S.ip[inp.dataset.ip]=v; statCache.clear(); save(); restyle(); render(); const d=panel.querySelector("details.ip"); if(d) d.open=true; } }; });
-  const ir=$("#ipReset"); if(ir) ir.onclick=()=>{ S.ip={...IPOTEZE_DEF}; statCache.clear(); save(); restyle(); render(); };
+  $$(".seatsel").forEach(sel=>{ sel.onclick=e=>e.stopPropagation(); sel.onchange=e=>{ const g=groups().find(x=>x.id===sel.dataset.g); g.seat=e.target.value; g.name=byKey.get(g.seat).name; clearCaches(); save(); restyle(); render(); }; });
+  $$("[data-ip]").forEach(inp=>{ inp.onchange=e=>{ const v=parseFloat(e.target.value); if(!isNaN(v)&&v>=0){ S.ip[inp.dataset.ip]=v; clearCaches(); save(); restyle(); render(); const d=panel.querySelector("details.ip"); if(d) d.open=true; } }; });
+  const ir=$("#ipReset"); if(ir) ir.onclick=()=>{ S.ip={...IPOTEZE_DEF}; clearCaches(); save(); restyle(); render(); };
   /* Propunere automată */
   $$("[data-thr]").forEach(b=>b.onclick=()=>{ S.threshold=+b.dataset.thr; save(); render(); });
   $$("[data-sc]").forEach(b=>b.onclick=()=>{ const sc=scenList(S.wcc,S.threshold)[+b.dataset.sc]; const key=sc.T+"_"+sc.K;
     if(S.appliedSc[S.wcc]===key){ S.mode="edit"; render(); restyle(); return; }
     S.appliedSc[S.wcc]=key; presetGroups(mkZones(S.wcc,sc.zones)); });
+  if(S.mode==="reg"){ bindReg($,$$); return; }
   /* export */
   const dl=$("#dl"), cp=$("#cp");
   const exp=()=>S.mode==="summary"?scenarioCSV(countyZones(S.cc,S.sumT)):scenarioCSV(groups());
@@ -847,14 +873,294 @@ document.querySelectorAll("nav button").forEach(b=>b.onclick=()=>{ S.mode=b.data
   if(matchMedia("(max-width:860px)").matches) document.querySelector("aside").scrollIntoView({behavior:"smooth",block:"start"}); });
 
 /* ============================================================
+   7b. REGIUNI (regionalizare)
+   Unitatea de bază e județul (41 de județe + Municipiul București). O regiune = județe vecine; consiliile județene
+   se comasează într-un singur consiliu, cu sediul în capitala aleasă. Datele: regiuni.json
+   (bugetele consiliilor județene 2025, reședințele de județ și variantele de regiuni).
+   Modelul de economii, pentru fiecare consiliu județean absorbit (cel din județul capitalei rămâne):
+   1. dispare conducerea: președinte, 2 vicepreședinți, secretar general, administrator public, posturile de cabinet (CAM inclus),
+      plafonat la aparatul acelui consiliu;
+   2. dispare un procent din restul aparatului (compartimentele dublate: juridic, resurse umane, audit, achiziții, IT, contabilitate);
+   3. scade numărul de consilieri (art. 180 din Codul administrativ, aplicat populației regiunii);
+   4. dispar costurile proprii ale unei instituții separate;
+   5. se scade armonizarea salarială a personalului preluat.
+   Opțional: economia la instituțiile prefectului (nu sunt în bugetele locale; valoare introdusă de utilizator).
+   ============================================================ */
+const ccOfId=id=>{ id=String(id); if(id===BUC) return "B"; const u=byKey.get(id); return u?u.cc:null; };
+function initRegions(d,rg){
+  REG=rg;
+  const ccBy=new Map(d.uat.map(r=>[r[0],r[2]]));
+  const b=d.uat.find(r=>r[0]===BUC);
+  if(b){ const [s,name,,tip,pop,cif,area,cen,fin]=b; BUCU={key:s,name,cc:"B",tip,pop,cif,area,cen,fin:Object.fromEntries(d.fin.map((k,i)=>[k,fin[i]??0])),layer:null}; }
+  for(const [k,l] of Object.entries(d.adj)){ const a=ccBy.get(k); if(!a) continue;
+    for(const n of l){ const c=ccBy.get(n); if(c&&c!==a){ for(const [x,y] of [[a,c],[c,a]]){ if(!CADJ.has(x)) CADJ.set(x,new Set()); CADJ.get(x).add(y); } } } }
+  const F=arr=>arr?Object.fromEntries(rg.fin.map((k,i)=>[k,arr[i]??0])):null;
+  for(const cc of [...CCS,"B"]){
+    const us = cc==="B" ? (BUCU?[BUCU]:[]) : unitsOf(cc);
+    const seat = rg.resedinte[cc];
+    CUN.set(cc,{cc,name:JUD[cc],pop:us.reduce((a,u)=>a+u.pop,0),area:us.reduce((a,u)=>a+(u.area||0),0),n:us.length,
+      v:us.reduce((a,u)=>a+(u.fin?u.fin.v:0),0), fNet:us.reduce((a,u)=>a+(u.fin?u.fin.f-u.fin.tvd:0),0),
+      cj:F(rg.cj[cc]), seat, seatName: seat===BUC?"București":(byKey.get(seat)?.name||JUD[cc])});
+  }
+}
+const cenOf=k=>k===BUC ? BUCU?.cen : byKey.get(k)?.cen;
+function kmK(a,b){
+  const A=cenOf(a), B=cenOf(b); if(!A||!B) return NaN;
+  const R=6371, r=Math.PI/180, dLat=(B[1]-A[1])*r, dLon=(B[0]-A[0])*r;
+  const h=Math.sin(dLat/2)**2+Math.cos(A[1]*r)*Math.cos(B[1]*r)*Math.sin(dLon/2)**2; return 2*R*Math.asin(Math.sqrt(h));
+}
+const seatPop=cc=>{ const s=CUN.get(cc).seat; return s===BUC?(BUCU?.pop||0):(byKey.get(s)?.pop||0); };
+const defaultCap=ccs=>[...ccs].sort((a,b)=>seatPop(b)-seatPop(a))[0];
+/* art. 180 din Codul administrativ: numărul consilierilor județeni */
+const consJ=p=>p<=350000?31:p<=500000?33:p<=650000?35:37;
+function uatTotals(cc){
+  const k=cc+"|"+S.sumT;
+  if(!uatTot.has(k)){ if(cc==="B") uatTot.set(k,{econ:0,n:1}); else { const zs=countyZones(cc,S.sumT); uatTot.set(k,{econ:scenarioTotals(zs).econ,n:zs.length}); } }
+  return uatTot.get(k);
+}
+function ccContig(ccs){
+  const set=new Set(ccs); if(set.size<2) return true; const st=[...set][0], seen=new Set([st]), q=[st];
+  while(q.length){ const c=q.pop(); for(const n of CADJ.get(c)||[]) if(set.has(n)&&!seen.has(n)){ seen.add(n); q.push(n); } }
+  return seen.size===set.size;
+}
+function regStats(ccsIn,capPref){
+  const ccs=[...ccsIn].sort(); const ck=ccs.join(",")+"|"+(capPref||"")+"|"+S.sumT;
+  if(regCache.has(ck)) return regCache.get(ck);
+  const us=ccs.map(c=>CUN.get(c)), I=S.ipR, sum=(arr,f)=>arr.reduce((a,x)=>a+f(x),0);
+  const cap = capPref&&ccs.includes(capPref) ? capPref : defaultCap(ccs);
+  const cjs=us.filter(u=>u.cj);
+  const keep = cap&&CUN.get(cap).cj ? cap : cjs.slice().sort((a,b)=>b.pop-a.pop)[0]?.cc;
+  const abs=cjs.filter(u=>u.cc!==keep);
+  const L=(I.presedinte+2*I.vice+I.secretar+I.admin+I.cabinet*I.salariu)*12*CAM;
+  let eL=0,eD=0,eA=0;
+  for(const u of abs){ const pa=u.cj.pa, l=Math.min(L,pa), dd=I.dubluri/100*(pa-l); eL+=l; eD+=dd; eA+=I.armonizare/100*(pa-l-dd); }
+  const eF=I.functionare*abs.length;
+  const consB=sum(cjs,u=>consJ(u.pop)), consA=cjs.length>1?consJ(sum(cjs,u=>u.pop)):consB;
+  const eC=Math.max(0,consB-consA)*I.consilier*12*CAM;
+  const ePr=I.prefect*Math.max(0,us.length-1);
+  const econLoc=abs.length?eL+eD+eF+eC-eA:0, econ=econLoc+ePr;
+  const cv=sum(cjs,u=>u.cj.v), cf=sum(cjs,u=>u.cj.f), uv=sum(us,u=>u.v), uf=sum(us,u=>u.fNet);
+  const capSeat=cap?CUN.get(cap).seat:null;
+  let wd=0,wp=0;
+  for(const c of ccs) for(const u of (c==="B"?[BUCU]:unitsOf(c))){ if(!u) continue; wd+=u.pop*(kmK(u.key,capSeat)||0); wp+=u.pop; }
+  const r={ccs,cap,keep,pop:sum(us,u=>u.pop),area:sum(us,u=>u.area),nCj:cjs.length,nAbs:abs.length,
+    eL:abs.length?eL:0,eD:abs.length?eD:0,eF,eC,eA:abs.length?eA:0,ePr,econ,econLoc,consB,consA,
+    cv,cf,ctc:sum(cjs,u=>u.cj.tc),absPa:sum(abs,u=>u.cj.pa),cpa:sum(cjs,u=>u.cj.pa),cdev:sum(cjs,u=>u.cj.dev),absTc:sum(abs,u=>u.cj.tc),uv,uf,
+    coverNow:(uv+cv)/(uf+cf), coverAfter:(uv+cv)/(uf+cf-econLoc),
+    dSeat:capSeat?Math.max(0,...us.map(u=>kmK(u.seat,capSeat)||0)):0, dAvg:wp?wd/wp:0,
+    nU:sum(ccs,c=>c==="B"?1:unitsOf(c).length), nZ:sum(ccs,c=>uatTotals(c).n), uEcon:sum(ccs,c=>uatTotals(c).econ),
+    contig:ccContig(ccs)};
+  regCache.set(ck,r); return r;
+}
+function colorRegions(rs){
+  const touch=(a,b)=>[...a.ccs].some(c=>[...(CADJ.get(c)||[])].some(n=>b.ccs.has(n)));
+  rs.forEach((r,i)=>{ const used=new Set(rs.slice(0,i).filter(o=>touch(r,o)).map(o=>o.color)); r.color=PALETTE.find(c=>!used.has(c))||PALETTE[i%PALETTE.length]; });
+  return rs;
+}
+function presetRegions(vid){
+  const v=REG.variante.find(x=>x.id===vid); if(!v) return [];
+  const caps=S.reg.cap[vid]||{};
+  return colorRegions(v.regions.map((r,i)=>({id:vid+"_"+i,idx:i,name:r.name,ccs:new Set(r.cc),cap:caps[i]||null})));
+}
+function curRegions(){ return S.reg.v==="custom" ? S.reg.custom : presetRegions(S.reg.v); }
+const rStats=r=>regStats(r.ccs,r.cap);
+function indexRegions(){ regOf=new Map(); for(const r of curRegions()) for(const c of r.ccs) regOf.set(c,r); }
+const unitWord=(v,n)=>{ v=v||S.reg.v; const one=v==="jm"?"județ nou":v==="act"?"județ":"regiune"; const many=v==="jm"?"județe noi":v==="act"?"județe":"regiuni"; return n===1?one:many; };
+function regStyle(cc){
+  const r=cc?regOf.get(cc):null, zoom=map?map.getZoom():7;
+  if(!r) return {color:"#9aa09c",weight:.3,opacity:.5,fillColor:"#e8e9e6",fillOpacity:.5};
+  const fill = S.reg.cov ? NCAT[netCat(rStats(r).coverAfter)].hex : r.color;
+  const focus = S.reg.v==="custom" ? S.reg.active : S.reg.sel;
+  return {color:"#2b3445",weight:zoom>=9?.6:.2,opacity:zoom>=9?.5:.3,fillColor:fill,fillOpacity: focus&&focus!==r.id?.4:.86};
+}
+function regTooltip(u,id){
+  const cc=u?u.cc:(id===BUC?"B":null); if(!cc) return "";
+  const C=CUN.get(cc), r=regOf.get(cc);
+  let h = u ? `<b>${esc(u.name)}</b> · ${tipName(u.tip)}, jud. ${esc(JUD[cc])}<br>${fmt(u.pop)} locuitori (2021)` : `<b>Municipiul București</b>`;
+  h+=`<hr>${cc==="B"?"Municipiul București":"Județul "+esc(C.name)}: ${fmt(C.pop)} loc.`;
+  if(r){ const st=rStats(r), capSeat=CUN.get(st.cap).seat;
+    h+=`<br>${st.ccs.length>1||S.reg.v!=="act"?`<b>${esc(r.name)}</b> · capitala ${esc(CUN.get(st.cap).seatName)}<br>${st.ccs.length} ${st.ccs.length===1?"județ":"județe"}, ${fmt(st.pop)} loc. · `:""}acoperire proprie ${pct(st.coverNow)}${st.nAbs?` → <b>${pct(st.coverAfter)}</b>`:""}`;
+    if(u&&st.ccs.length>1) h+=`<br>${kmK(u.key,capSeat).toFixed(0)} km până la capitala regiunii`; }
+  else h+=`<br><i>Nealocat. ${S.reg.active?"Atinge ca să-l adaugi la regiunea activă.":"Atinge ca să pornești o regiune nouă."}</i>`;
+  return h;
+}
+let rid=1;
+function pickColor(ccs){
+  const near=new Set(S.reg.custom.filter(r=>[...r.ccs].some(c=>[...ccs].some(x=>CADJ.get(x)?.has(c)))).map(r=>r.color));
+  return PALETTE.find(c=>!near.has(c))||PALETTE[S.reg.custom.length%PALETTE.length];
+}
+function newRegion(ccs){
+  ccs.forEach(c=>S.reg.custom.forEach(r=>r.ccs.delete(c)));
+  const r={id:"c"+(rid++)+"_"+Date.now().toString(36),name:ccs.length?`Regiunea ${CUN.get(defaultCap(ccs)).seatName}`:`Regiunea ${S.reg.custom.length+1}`,color:pickColor(ccs),ccs:new Set(ccs),cap:null};
+  S.reg.custom.push(r); S.reg.active=r.id; regCleanup(); clearCaches(); save(); restyle(); render(); return r;
+}
+function regCleanup(){ S.reg.custom=S.reg.custom.filter(r=>r.ccs.size||r.id===S.reg.active); }
+function startCustom(vid){
+  const st=Date.now().toString(36);
+  S.reg.custom = vid ? presetRegions(vid).map(r=>({id:"c"+r.idx+"_"+st,name:r.name,color:r.color,ccs:new Set(r.ccs),cap:r.cap})) : [];
+  S.reg.v="custom"; S.reg.active=null; S.reg.sel=null;
+}
+function onRegClick(cc){
+  if(S.reg.v==="custom"){
+    const g=S.reg.custom.find(r=>r.id===S.reg.active);
+    if(!g){ const r=regOf.get(cc); if(r){ S.reg.active=r.id; restyle(true); render(); } else newRegion([cc]); return; }
+    if(g.ccs.has(cc)) g.ccs.delete(cc); else { S.reg.custom.forEach(r=>r.ccs.delete(cc)); g.ccs.add(cc); }
+    regCleanup(); clearCaches(); save(); restyle(); render(); return;
+  }
+  const r=regOf.get(cc); if(!r) return;
+  S.reg.sel=S.reg.sel===r.id?null:r.id; restyle(true); render();
+  const el=panel.querySelector(`.group[data-r="${r.id}"]`); if(el) el.scrollIntoView({block:"nearest",behavior:"smooth"});
+}
+function setCap(id,cc){
+  const r=curRegions().find(x=>x.id===id); if(!r) return;
+  if(S.reg.v==="custom") r.cap=cc; else { S.reg.cap[S.reg.v]={...(S.reg.cap[S.reg.v]||{}),[r.idx]:cc}; }
+  clearCaches(); save(); restyle(); render();
+}
+function fitRegion(r){
+  if(!map) return; const b=L.latLngBounds([]);
+  for(const c of r.ccs) for(const u of (c==="B"?[BUCU]:unitsOf(c))) if(u&&u.layer) b.extend(u.layer.getBounds());
+  if(b.isValid()) map.fitBounds(b,{padding:[20,20],maxZoom:9});
+}
+function regTotals(rs){
+  const st=rs.map(rStats), s=k=>st.reduce((a,x)=>a+x[k],0);
+  const assigned=new Set(rs.flatMap(r=>[...r.ccs]));
+  return {st,n:rs.length,econ:s("econ"),econLoc:s("econLoc"),eL:s("eL"),eD:s("eD"),eF:s("eF"),eC:s("eC"),eA:s("eA"),ePr:s("ePr"),
+    consB:s("consB"),consA:s("consA"),nAbs:s("nAbs"),absTc:s("absTc"),absPa:s("absPa"),
+    minPop:st.length?Math.min(...st.map(x=>x.pop)):NaN, maxPop:st.length?Math.max(...st.map(x=>x.pop)):NaN,
+    dSeat:Math.max(0,...st.map(x=>x.dSeat)), nCjAfter:st.filter(x=>x.nCj>0).length,
+    unassigned:[...CUN.keys()].filter(c=>!assigned.has(c)), bad:st.filter(x=>!x.contig).length,
+    uEcon:[...CUN.keys()].reduce((a,c)=>a+uatTotals(c).econ,0)};
+}
+function regEconTable(T){
+  const I=S.ipR;
+  return `<div class="tablewrap" style="max-height:none"><table class="ind"><tbody>
+    <tr><td>Conducerea consiliilor județene absorbite: președinte, 2 vicepreședinți, secretar general, administrator public, cabinet (${fmt(T.nAbs)} consilii)</td><td class="n">${fmtLei(T.eL)}</td></tr>
+    <tr><td>Compartimente dublate din aparatul lor (${fmt(I.dubluri)}%: juridic, resurse umane, audit, achiziții, IT, contabilitate)</td><td class="n">${fmtLei(T.eD)}</td></tr>
+    <tr><td>Consilieri județeni: de la ${fmt(T.consB)} la ${fmt(T.consA)}</td><td class="n">${fmtLei(T.eC)}</td></tr>
+    <tr><td>Funcționarea unei instituții separate (sediu, licențe, audit, parc auto, protocol)</td><td class="n">${fmtLei(T.eF)}</td></tr>
+    ${I.prefect>0?`<tr><td>Instituțiile prefectului (estimarea introdusă, bugetul de stat)</td><td class="n">${fmtLei(T.ePr)}</td></tr>`:""}
+    <tr><td>Minus armonizarea salarială a personalului preluat</td><td class="n">−${fmtLei(T.eA)}</td></tr>
+    <tr><td><b>Total pe an</b></td><td class="n"><b>${fmtLei(T.econ)}</b></td></tr>
+    <tr><td>Din cheltuielile cu aparatul consiliilor județene absorbite (${fmtLei(T.absPa)} lei în 2025, cap. 51.01)</td><td class="n"><b>${T.absPa?pct1((T.eL+T.eD-T.eA)/T.absPa):"–"}</b></td></tr>
+    <tr><td>Din totalul cheltuielilor consiliilor județene absorbite, cu spitale, drumuri și investiții (${fmtLei(T.absTc)} lei)</td><td class="n">${T.absTc?pct1(T.econLoc/T.absTc):"–"}</td></tr>
+    <tr><td>Împreună cu comasarea UAT la pragul de ${fmt(S.sumT)} loc. (${fmtLei(T.uEcon)} lei, fila Propunerea)</td><td class="n"><b>${fmtLei(T.econ+T.uEcon)}</b></td></tr>
+  </tbody></table></div>`;
+}
+function regCard(r){
+  const custom=S.reg.v==="custom", st=rStats(r), many=st.ccs.length>1;
+  const caps=[...r.ccs].sort((a,b)=>seatPop(b)-seatPop(a));
+  const on = custom ? S.reg.active===r.id : S.reg.sel===r.id;
+  const title = custom ? `<input class="rrename" data-r="${r.id}" aria-label="Numele regiunii" value="${esc(r.name)}" style="font:700 14px var(--f-body);border:0;background:none;color:inherit;padding:0;min-width:0;width:100%">` : `<span class="name">${esc(r.name)}</span>`;
+  const capName=st.cap?CUN.get(st.cap).seatName:"–";
+  const det = on && st.ccs.length ? `<div class="meta" style="cursor:default" data-stop="1"><div class="tablewrap" style="max-height:none"><table class="ind"><tbody>
+      <tr><td>Suprafață</td><td class="n">${fmt(st.area)} km²</td></tr>
+      <tr><td>Distanța medie până la capitală (ponderată cu populația)</td><td class="n">${st.dAvg.toFixed(0)} km</td></tr>
+      <tr><td>Venituri proprii: primării</td><td class="n">${fmtLei(st.uv)}</td></tr>
+      <tr><td>Venituri proprii: consilii județene</td><td class="n">${fmtLei(st.cv)}</td></tr>
+      <tr><td>Funcționare: primării (fără cheltuieli descentralizate)</td><td class="n">${fmtLei(st.uf)}</td></tr>
+      <tr><td>Funcționare: consilii județene</td><td class="n">${fmtLei(st.cf)}</td></tr>
+      <tr><td>Aparatul consiliilor județene (cap. 51.01, personal)</td><td class="n">${fmtLei(st.cpa)}</td></tr>
+      <tr><td>Dezvoltare: consilii județene</td><td class="n">${fmtLei(st.cdev)}</td></tr>
+      <tr><td>Total cheltuieli consilii județene</td><td class="n">${fmtLei(st.ctc)}</td></tr>
+      <tr><td>Economie la comasarea UAT din regiune (prag ${fmt(S.sumT)})</td><td class="n">${fmtLei(st.uEcon)}</td></tr>
+    </tbody></table></div></div>` : "";
+  return `<div class="group ${on?"active":""}" data-r="${r.id}" role="button" tabindex="0"><span class="sw" style="background:${r.color}"></span>${title}<span class="pop">${fmt(st.pop)}</span>
+    <div class="meta">${st.contig?"":`<b class="below">Nu e continuă: are județe fără graniță comună cu restul. </b>`}${!st.ccs.length?`<i>Goală: atinge județe pe hartă ca să le adaugi.</i>`:`
+    ${many?`<label class="seatrow">Capitala <select class="capsel" data-r="${r.id}">${caps.map(c=>`<option value="${c}" ${c===st.cap?"selected":""}>${esc(CUN.get(c).seatName)}</option>`).join("")}</select></label>`:`Reședința: ${esc(capName)}<br>`}
+    ${st.ccs.length} ${st.ccs.length===1?"județ":"județe"}: ${caps.map(c=>c===st.cap&&many?`<b>★ ${esc(JUD[c])}</b>`:esc(JUD[c])).join(", ")}<br>
+    ${fmt(st.nU)} UAT azi → ${fmt(st.nZ)} la pragul de ${fmt(S.sumT)} loc. · acoperire proprie ${pct(st.coverNow)}${st.nAbs?` → <b>${pct(st.coverAfter)}</b>`:""}${st.nAbs?`<br>${st.nCj} consilii județene → 1 · economie ${fmtLei(st.econ)} lei/an`:""}${many?` · max. ${Math.ceil(st.dSeat)} km de la o reședință de județ la capitală`:""}`}</div>
+    ${det}</div>`;
+}
+function ipRHtml(){
+  const I=S.ipR; const f=(k,label,step)=>`<label class="f" for="ipr_${k}">${label}<input type="number" id="ipr_${k}" data-ipr="${k}" value="${I[k]}" step="${step}" min="0"></label>`;
+  return `<details class="ip" id="iprD"><summary>Ipoteze de calcul pentru consiliile județene</summary>
+    <div class="ipgrid">
+    ${f("presedinte","Președinte CJ (lei brut/lună)",100)}${f("vice","Vicepreședinte CJ (lei brut/lună, sunt 2)",100)}${f("secretar","Secretar general al județului (lei brut/lună)",100)}
+    ${f("admin","Administrator public (lei brut/lună)",100)}${f("cabinet","Posturi de cabinet desființate",1)}${f("salariu","Salariu mediu pe acele posturi",100)}
+    ${f("dubluri","Compartimente dublate: % din restul aparatului",1)}${f("consilier","Indemnizație consilier județean (lei/lună)",50)}
+    ${f("functionare","Funcționare instituție separată (lei/an)",50000)}${f("armonizare","Armonizare salarială (% din personalul preluat)",1)}
+    ${f("prefect","Economie la instituția prefectului, pe județ comasat (lei/an)",100000)}
+    </div><div class="row"><button class="btn" id="iprReset">Revino la valorile implicite</button></div>
+    <p class="note">Salariile sunt aproximative și includ CAM 2,25%. Aparatul fiecărui consiliu județean e din execuția bugetară 2025 (cap. 51.01, titlul 10). Instituțiile prefectului sunt finanțate de la bugetul de stat și nu apar în aceste date: implicit 0, poți introduce o estimare.</p></details>`;
+}
+function regCompare(){
+  const vs=[...REG.variante.map(v=>({id:v.id,name:v.short,rs:presetRegions(v.id)})), ...(S.reg.custom.length?[{id:"custom",name:"Varianta ta",rs:S.reg.custom.filter(r=>r.ccs.size)}]:[])];
+  return `<div class="tablewrap"><table><thead><tr><th>Varianta</th><th class="n">Unități</th><th class="n">Economie/an</th><th class="n">Cea mai mică</th><th class="n">Dist. max</th></tr></thead><tbody>
+    ${vs.map(v=>{ const T=regTotals(v.rs); return `<tr data-rv="${v.id}" tabindex="0" class="${v.id===S.reg.v?"sel":""}"><td>${esc(v.name)}</td><td class="n">${T.n}</td><td class="n">${fmtLei(T.econ)}</td><td class="n">${fmt(T.minPop)}</td><td class="n">${Math.ceil(T.dSeat)} km</td></tr>`; }).join("")}
+    </tbody></table></div>
+    <p class="note">Unități: regiuni sau județe după reorganizare, cu București. Cea mai mică: populația celei mai mici unități. Dist. max: cea mai mare distanță în linie dreaptă de la o reședință de județ de azi la capitala unității din care face parte.</p>`;
+}
+function regHtml(){
+  const custom=S.reg.v==="custom", rs=curRegions(), T=regTotals(rs.filter(r=>r.ccs.size));
+  const v=REG.variante.find(x=>x.id===S.reg.v);
+  const segs=[...REG.variante.map(x=>({id:x.id,short:x.short})),{id:"custom",short:"Construiește"}];
+  const sorted=rs.slice().sort((a,b)=>custom?0:rStats(b).pop-rStats(a).pop);
+  return `<div class="section"><h2>Regionalizare</h2>
+      <div class="seg" role="group" aria-label="Varianta de regionalizare">${segs.map(x=>`<button class="segbtn" data-rv="${x.id}" aria-pressed="${x.id===S.reg.v}">${esc(x.short)}</button>`).join("")}</div>
+      <p class="note">${custom?"Regiunile tale: alege o regiune din listă, apoi atinge județele pe hartă ca să le adaugi sau să le scoți. Fără regiune activă, un clic pe un județ nealocat pornește o regiune nouă.":esc(v.desc)}</p></div>
+    ${custom?`<div class="row"><span class="note">Pornește de la:</span>${REG.variante.map(x=>`<button class="btn" data-from="${x.id}">${esc(x.short)}</button>`).join("")}<button class="btn" id="rClear">Hartă goală</button><button class="btn primary" id="rNew">Regiune nouă</button></div>`:""}
+    <div class="lead"><div class="big">${fmt(CUN.size)} → ${fmt(T.n)}</div>
+      <p>${S.reg.v==="act"?"Cele 41 de județe și Municipiul București, fără nicio comasare.":`<b>${T.n} ${unitWord(null,T.n)}</b> în loc de 41 de județe și Municipiul București. Cele 41 de consilii județene devin <b>${T.nCjAfter}</b> consilii${S.reg.v==="jm"?" județene":" regionale"}, cu sediul în capitala aleasă (★).`}</p></div>
+    ${T.unassigned.length?`<p class="hint">${T.unassigned.length} ${T.unassigned.length===1?"județ nealocat":"județe nealocate"}: ${T.unassigned.map(c=>esc(JUD[c])).join(", ")}.</p>`:""}
+    ${T.bad?`<p class="hint">${T.bad} ${T.bad===1?"regiune nu e continuă":"regiuni nu sunt continue"} teritorial.</p>`:""}
+    <div class="kpis">
+      <div class="kpi"><b>${fmtLei(T.econ)}</b><span>lei pe an economie la consiliile județene${T.absPa?` (${pct((T.eL+T.eD-T.eA)/T.absPa)} din aparatul celor absorbite)`:""}</span></div>
+      <div class="kpi"><b>${fmt(T.minPop)} – ${fmt(T.maxPop)}</b><span>locuitori în cea mai mică și cea mai mare unitate</span></div>
+      <div class="kpi"><b>${Math.ceil(T.dSeat)} km</b><span>cea mai mare distanță de la o reședință de județ la capitală</span></div>
+    </div>
+    <div class="section"><h2>Economia estimată: ${fmtLei(T.econ)} lei pe an</h2>${regEconTable(T)}
+      <div class="f note">Prag minim de populație pentru comasarea UAT (aceeași ca în Propunerea)${thrSeg("t",S.sumT)}</div>
+      <p class="note">Spitalele, drumurile, serviciile sociale și instituțiile subordonate consiliilor județene rămân; se comasează doar aparatul de conducere și administrare. Serviciile deconcentrate ale ministerelor (40–50 pe județ) nu sunt în aceste date.</p></div>
+    ${ipRHtml()}
+    <div class="seg" role="group" aria-label="Culoarea hărții"><button class="segbtn" id="rZ" aria-pressed="${!S.reg.cov}">Harta pe ${unitWord(null,2)}</button><button class="segbtn" id="rC" aria-pressed="${S.reg.cov}">Harta după acoperire</button></div>
+    ${S.reg.cov?`<div class="legend covleg">${NCAT.slice(1).map(c=>`<div><span class="sw" style="background:${c.hex}"></span>${["Sub 50%","50–75%","75–99%","Peste 100%"][c.k-1]} din funcționare acoperită din venituri proprii</div>`).join("")}</div>`:""}
+    <div class="section"><h2>${rs.length} ${unitWord(null,rs.length)} <span class="note">${custom?"":"de la cea mai mare la cea mai mică"}</span></h2><div class="groups">${sorted.map(regCard).join("")}</div>
+      <p class="note">Acoperire proprie: cât din funcționare plătesc primăriile și consiliul județean din venituri proprii (fără învățământul și asistența socială finanțate din TVA), azi → după comasarea consiliilor județene.</p></div>
+    <div class="section"><h2>Compară variantele</h2>${regCompare()}</div>
+    <div class="row"><button class="btn" id="dl" data-label="Descarcă CSV">Descarcă CSV</button><button class="btn" id="cp" data-label="Copiază tabelul">Copiază tabelul</button></div>`;
+}
+function regCSV(){
+  const rs=curRegions().filter(r=>r.ccs.size), vname=S.reg.v==="custom"?"Varianta proprie":REG.variante.find(x=>x.id===S.reg.v).name;
+  const rows=[`varianta;regiune;capitala;judet;populatie_2021;uat`];
+  for(const r of rs){ const st=rStats(r); for(const c of [...r.ccs].sort()){ const C=CUN.get(c); rows.push(`${vname};${r.name};${CUN.get(st.cap).seatName};${C.name};${C.pop};${C.n}`); } }
+  rows.push(""); rows.push("regiune;capitala;nr_judete;populatie;suprafata_km2;uat_azi;uat_dupa_comasare;consilii_judetene;venituri_proprii_primarii;venituri_proprii_cj;functionare_primarii;functionare_cj;acoperire_azi;acoperire_dupa;economie_cj_lei_an;economie_uat_lei_an;distanta_max_km");
+  const r0=x=>isNaN(x)?"":Math.round(x);
+  for(const r of rs){ const st=rStats(r); rows.push([r.name,CUN.get(st.cap).seatName,st.ccs.length,st.pop,r0(st.area),st.nU,st.nZ,st.nCj,r0(st.uv),r0(st.cv),r0(st.uf),r0(st.cf),st.coverNow.toFixed(3),st.coverAfter.toFixed(3),r0(st.econ),r0(st.uEcon),Math.ceil(st.dSeat)].join(";")); }
+  return rows.join("\n");
+}
+function bindReg($,$$){
+  $$("[data-rv]").forEach(el=>{ const go=()=>{ const v=el.dataset.rv;
+      if(v==="custom"&&!S.reg.custom.length) startCustom(S.reg.v==="custom"?"dev":S.reg.v);
+      S.reg.v=v; S.reg.sel=null; S.reg.active=null; clearCaches(); save(); restyle(); render(); };
+    el.onclick=go; if(el.tagName==="TR") el.onkeydown=e=>{ if(e.key==="Enter") go(); }; });
+  $$("[data-from]").forEach(b=>b.onclick=()=>{ startCustom(b.dataset.from); clearCaches(); save(); restyle(); render(); });
+  const rc=$("#rClear"); if(rc) rc.onclick=()=>{ startCustom(null); clearCaches(); save(); restyle(); render(); };
+  const rn=$("#rNew"); if(rn) rn.onclick=()=>newRegion([]);
+  $$(".group[data-r]").forEach(el=>{ el.onclick=e=>{ if(e.target.closest("select,input,[data-stop]")) return; const id=el.dataset.r;
+      if(S.reg.v==="custom") S.reg.active=S.reg.active===id?null:id; else S.reg.sel=S.reg.sel===id?null:id;
+      regCleanup(); restyle(); render(); const r=curRegions().find(x=>x.id===id); if(r&&(S.reg.active===id||S.reg.sel===id)) fitRegion(r); else fitFocus(); };
+    el.onkeydown=e=>{ if(e.key==="Enter"&&e.target===el) el.click(); }; });
+  $$(".capsel").forEach(sel=>{ sel.onclick=e=>e.stopPropagation(); sel.onchange=e=>setCap(sel.dataset.r,e.target.value); });
+  $$(".rrename").forEach(inp=>{ inp.onclick=e=>e.stopPropagation(); inp.onchange=e=>{ const r=S.reg.custom.find(x=>x.id===inp.dataset.r); if(r){ r.name=e.target.value||r.name; save(); } }; });
+  $$("[data-ipr]").forEach(inp=>{ inp.onchange=e=>{ const v=parseFloat(e.target.value); if(!isNaN(v)&&v>=0){ S.ipR[inp.dataset.ipr]=v; clearCaches(); save(); restyle(); render(); const d=$("#iprD"); if(d) d.open=true; } }; });
+  const rz=$("#rZ"), rC=$("#rC");
+  if(rz) rz.onclick=()=>{ S.reg.cov=false; save(); restyle(true); render(); };
+  if(rC) rC.onclick=()=>{ S.reg.cov=true; save(); restyle(true); render(); };
+  const ir=$("#iprReset"); if(ir) ir.onclick=()=>{ S.ipR={...IPR_DEF}; clearCaches(); save(); restyle(); render(); const d=$("#iprD"); if(d) d.open=true; };
+  const dl=$("#dl"), cp=$("#cp"), name=`regiuni_${S.reg.v}.csv`;
+  if(dl) dl.onclick=()=>download(name,regCSV());
+  if(cp) cp.onclick=()=>copy(regCSV(),cp);
+}
+
+/* ============================================================
    8. PORNIRE
    ============================================================ */
 async function getJSON(p){ const r=await fetch(p); if(!r.ok) throw new Error(p+": HTTP "+r.status); return r.json(); }
 (async function start(){
-  S.ip={...IPOTEZE_DEF};
+  S.ip={...IPOTEZE_DEF}; S.ipR={...IPR_DEF};
   try{ initMap(); }catch(e){ console.warn(e); }
   try{
-    const [d,sc,topo]=await Promise.all([getJSON("uat_2025.json"),getJSON("scenarii.json"),getJSON("ro_uat.topojson")]);
+    const [d,sc,topo,rg]=await Promise.all([getJSON("uat_2025.json"),getJSON("scenarii.json"),getJSON("ro_uat.topojson"),getJSON("regiuni.json")]);
     JUD=d.judete;
     for(const r of d.uat){ const [s,name,cc,tip,pop,cif,area,cen,fin]=r; if(s===BUC) continue;
       const F=Object.fromEntries(d.fin.map((k,i)=>[k,fin[i]??0]));
@@ -863,6 +1169,7 @@ async function getJSON(p){ const r=await fetch(p); if(!r.ok) throw new Error(p+"
     for(const [k,l] of Object.entries(d.adj)) if(byKey.has(k)) ADJ.set(k,l.filter(n=>byKey.has(n)&&byKey.get(n).cc===byKey.get(k).cc));
     CCS=[...new Set(UAT.map(u=>u.cc))].sort((a,b)=>JUD[a].localeCompare(JUD[b],"ro"));
     SCEN=sc.judete; PRESET_VECHI_BR=sc.preset_br||[];
+    initRegions(d,rg);
     TOPO=topo; OBJ=topo.objects[Object.keys(topo.objects)[0]];
     load();
     if(!CCS.includes(S.wcc)) S.wcc="BR";
