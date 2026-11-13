@@ -246,7 +246,9 @@ const S = {
   mode:"summary", metric:"net", colorBy:"cov",
   cc:null,              // județul afișat în Propunere / Hartă actuală (null = toată țara)
   wcc:"BR",             // județul de lucru în Construiește zone și Propunere automată
-  wcc2:null,            // un județ vecin adăugat la zona de lucru din Construiește zone (comasări peste graniță)
+  wcc2:null,
+  only:false,           // Construiește zone: arată doar zona activă (restul hărții în umbră, datele doar pentru ea)
+  pendingZone:null,     // zona venită dintr-un link (#zone/BR+GL/z42682-42708-…)            // un județ vecin adăugat la zona de lucru din Construiește zone (comasări peste graniță)
   sumT:5000, threshold:5000,
   groupsBy:{},          // {cc:[{id,name,seat,color,members:Set}]}
   activeGroup:null, selected:null, openGroup:null, appliedSc:{},
@@ -375,6 +377,19 @@ function areaUnits(){ const cs=areaCCs(); return UAT.filter(u=>cs.includes(u.cc)
 function areaName(){ return areaCCs().map(c=>JUD[c]).join(" + "); }
 function groups(){ const k=areaKey(); return S.groupsBy[k]||(S.groupsBy[k]=[]); }
 function groupOf(key){ return groups().find(g=>g.members.has(key)); }
+/* Modul „doar zona aceasta”: zona activă, dacă e cerută și există */
+function onlyGroup(){ if(S.mode!=="edit"||!S.only||!S.activeGroup) return null; const g=groups().find(x=>x.id===S.activeGroup); return g&&g.members.size?g:null; }
+/* Zona dintr-un link: o grupare nouă cu exact acele localități (prima e reședința), afișată singură */
+function applyPendingZone(){
+  if(S.mode!=="edit"||!S.pendingZone) return; const cs=areaCCs();
+  const keys=S.pendingZone.filter(k=>byKey.has(k)&&cs.includes(byKey.get(k).cc)); S.pendingZone=null; if(!keys.length) return;
+  ensureGroups(); const set=new Set(keys);
+  const same=groups().find(g=>g.members.size===set.size&&[...set].every(k=>g.members.has(k)));
+  if(same){ same.seat=keys[0]; S.activeGroup=same.id; S.only=true; clearCaches(); return; }
+  keys.forEach(k=>{ const p=groupOf(k); if(p) p.members.delete(k); });
+  const gs=groups(); const g={id:"l"+Date.now().toString(36),name:byKey.get(keys[0]).name,seat:keys[0],color:PALETTE[gs.length%PALETTE.length],members:set};
+  gs.push(g); S.groupsBy[areaKey()]=gs.filter(x=>x.members.size>0); S.activeGroup=g.id; S.only=true; clearCaches(); save();
+}
 
 /* ---------- Scenarii ---------- */
 const PRAGURI=[3000,5000,7500,10000,15000];
@@ -435,12 +450,16 @@ function shownZones(){
   return null;
 }
 let zoneIndex=new Map();
-function indexZones(){ if(S.mode==="reg") indexRegions(); zoneIndex=new Map(); const zs=shownZones(); if(zs) for(const z of zs) for(const k of z.members) zoneIndex.set(k,z); }
+function indexZones(){ applyPendingZone(); if(S.mode==="reg") indexRegions(); zoneIndex=new Map(); const zs=shownZones(); if(zs) for(const z of zs) for(const k of z.members) zoneIndex.set(k,z); }
 function focusCC(){ return S.mode==="reg" ? null : S.mode==="edit"||S.mode==="auto" ? S.wcc : S.cc; }
 function focusSet(){ if(S.mode==="edit") return new Set(areaCCs()); const c=focusCC(); return c?new Set([c]):null; }
 function styleFor(u,id){
   if(S.mode==="reg") return regStyle(u?u.cc:(id===BUC?"B":null));
   if(!u) return {color:"#8a918d",weight:.4,opacity:.6,fillColor:"#c9ccc7",fillOpacity:.35};
+  const og=onlyGroup();
+  if(og){ if(!og.members.has(u.key)) return {color:"#3a3f47",weight:.3,opacity:.35,fillColor:"#1b1f26",fillOpacity:.62};
+    const st=gStats(og); const fill=S.colorBy==="cov"&&u.fin?NCAT[netCat(st.coverNet)].hex:og.color;
+    return {color:u.key===st.seat?"#000":"#2b3445",weight:u.key===st.seat?2:1,opacity:.8,fillColor:fill,fillOpacity:.9}; }
   const fs=focusSet(); const out = fs && !fs.has(u.cc);
   let fill="#c9ccc7", op=.82;
   if(S.mode==="actual"||S.mode==="data"){ fill=curCats()[curCat(u)].hex; }
@@ -469,7 +488,10 @@ function drawGeo(){
   geoOk=true; fitFocus();
 }
 function fitFocus(){
-  if(!map||!geoLayer) return; const fs=focusSet();
+  if(!map||!geoLayer) return; const og=onlyGroup();
+  if(og){ const b=L.latLngBounds([]); og.members.forEach(k=>{ const l=byKey.get(k).layer; if(l) b.extend(l.getBounds()); });
+    const wide=map.getSize().x>700; if(b.isValid()) map.fitBounds(b,wide?{paddingTopLeft:[30,30],paddingBottomRight:[300,30],maxZoom:11}:{padding:[24,24],maxZoom:11}); return; }
+  const fs=focusSet();
   if(!fs){ map.fitBounds([[43.62,20.26],[48.27,29.7]],{padding:[10,10]}); return; }
   const b=L.latLngBounds([]); UAT.forEach(u=>{ if(fs.has(u.cc)&&u.layer) b.extend(u.layer.getBounds()); });
   /* loc liber în dreapta pentru caseta de informații, când harta e destul de lată */
@@ -490,6 +512,15 @@ function drawLines(){
     return;
   }
   if(!(S.mode==="summary"||S.mode==="edit"||S.mode==="auto")) return;
+  const og=onlyGroup();
+  if(og){ const inG=id=>og.members.has(String(id));
+    const mesh=topojson.mesh(TOPO,OBJ,(a,b)=>a===b?inG(a.id):inG(a.id)!==inG(b.id));
+    lineLayer=L.layerGroup([
+      L.geoJSON(mesh,{renderer,interactive:false,style:{color:"#ffffff",weight:6,opacity:.95}}),
+      L.geoJSON(mesh,{renderer,interactive:false,style:{color:"#14213d",weight:3,opacity:1}})
+    ]).addTo(map);
+    if(countyLayer){ countyLayer.setStyle({weight:1.2,opacity:.5,dashArray:"5 5"}); countyLayer.bringToBack(); }
+    return; }
   const fcc=focusCC(), fs=focusSet(), pair=pairOn();
   const zid=id=>{ const z=zoneIndex.get(String(id)); return z?z.id:"u"+id; };
   const inScope=id=>{ const u=byKey.get(String(id)); return u && (!fs||fs.has(u.cc)); };
@@ -542,7 +573,7 @@ function onUatClick(key){
   if(S.mode==="actual"){ S.selected=key; if(S.cc!==u.cc){ S.cc=u.cc; restyle(); } render(); panel.scrollTop=0; return; }
   if(S.mode==="auto"){ if(u.cc!==S.wcc){ S.wcc=u.cc; save(); restyle(); render(); fitFocus(); } return; }
   if(S.mode!=="edit") return;
-  if(!areaCCs().includes(u.cc)){ S.wcc=u.cc; S.wcc2=null; S.activeGroup=null; ensureGroups(); save(); restyle(); render(); fitFocus(); return; }
+  if(!areaCCs().includes(u.cc)){ if(onlyGroup()) return; S.wcc=u.cc; S.wcc2=null; S.activeGroup=null; S.only=false; ensureGroups(); save(); restyle(); render(); fitFocus(); return; }
   if(!S.activeGroup){ newGroup(u.name,[key]); return; }
   const g=groups().find(x=>x.id===S.activeGroup); const prev=groupOf(key);
   if(prev===g){ prev.members.delete(key); }
@@ -794,16 +825,44 @@ function groupCard(g,readonly){
     <span class="sw" style="background:${g.color}"></span>${title}<span class="pop ${st.pop<thr?"below":""}">${fmt(st.pop)}</span>
     <div class="meta">${st.contig?"":`<b class="below">Zona nu e continuă: are comune fără graniță comună cu restul. </b>`}${!readonly&&st.n>1?`<label class="seatrow">Reședința <select class="seatsel" data-g="${g.id}">${membersSeatFirst(g.members,st.seat).map(u=>`<option value="${u.key}" ${u.key===st.seat?"selected":""}>${esc(u.name)}</option>`).join("")}</select></label>`:""}
     ${st.n} UAT: ${namesHtml(g.members,st.seat)}${fin}</div>
+    ${!readonly&&S.mode==="edit"&&S.activeGroup===g.id?`<div class="meta" data-stop="1"><button class="btn primary" data-only="1">Arată doar zona aceasta</button></div>`:""}
     ${S.activeGroup===g.id||S.openGroup===g.id?`<div class="meta" style="cursor:default" data-stop="1">${indicatorsHtml(st)}</div>`:""}</div>`;
+}
+function onlyHtml(g){
+  const st=gStats(g), T=scenarioTotals([g]);
+  const us=membersSeatFirst(g.members,st.seat);
+  const ccs=[...new Set(us.map(u=>u.cc))];
+  return `<button class="btn link" id="onlyOff">← Toate zonele din ${esc(areaName())}</button>
+  <div class="lead"><div class="big">${st.n} → 1</div>
+    <p>Zona <b>★ ${esc(byKey.get(st.seat).name)}</b>${ccs.length>1?`, peste granița dintre județele ${ccs.map(c=>esc(JUD[c])).join(" și ")}`:`, județul ${esc(JUD[ccs[0]])}`}: ${fmt(st.pop)} locuitori, ${st.area.toLocaleString("ro-RO",{maximumFractionDigits:0})} km². Toate cifrele de mai jos sunt calculate doar pentru localitățile din această zonă.</p></div>
+  ${st.contig?"":`<p class="hint"><b class="below">Zona nu e continuă:</b> are localități fără graniță comună cu restul. Adaugă localitățile dintre ele.</p>`}
+  <div class="kpis">
+    <div class="kpi"><b>${fmtLei(st.econ)}</b><span>lei pe an economie estimată (${econPct(T)} din cheltuielile primăriilor comasate)</span></div>
+    <div class="kpi"><b>${pct(st.coverNetNow)} → ${pct(st.coverNet)}</b><span>funcționare acoperită din venituri proprii, azi → după comasare</span></div>
+    <div class="kpi"><b>${Math.ceil(st.dmax)} km</b><span>distanța maximă până la reședință, în linie dreaptă</span></div></div>
+  <div class="section"><h2>Localitățile din zonă</h2>
+    ${st.n>1?`<label class="seatrow">Reședința <select class="seatsel" data-g="${g.id}">${us.map(u=>`<option value="${u.key}" ${u.key===st.seat?"selected":""}>${esc(u.name)}</option>`).join("")}</select></label>`:""}
+    <div class="tablewrap" style="max-height:none"><table><thead><tr><th>UAT</th><th>Județ</th><th class="n">Pop. 2021</th><th class="n">Acop. azi</th><th class="n">Km</th></tr></thead><tbody>
+    ${us.map(u=>`<tr><td>${u.key===st.seat?"<b>★ ":""}${esc(u.name)}${u.key===st.seat?"</b>":""} <span class="note">${tipName(u.tip)}</span></td><td>${esc(JUD[u.cc])}</td><td class="n">${fmt(u.pop)}</td><td class="n">${pct(netRatio(u.fin))}</td><td class="n">${u.key===st.seat?"–":(km(u.key,st.seat)||0).toFixed(0)}</td></tr>`).join("")}
+    <tr><td><b>Total zonă</b></td><td></td><td class="n"><b>${fmt(st.pop)}</b></td><td class="n"><b>${pct(st.coverNetNow)}</b></td><td></td></tr>
+    </tbody></table></div>
+    <p class="note">Atinge pe hartă o localitate din umbră ca s-o adaugi în zonă, sau una din zonă ca s-o scoți.</p></div>
+  <div class="section"><h2>Economia estimată: ${fmtLei(st.econ)} lei pe an</h2>${econTable(T)}</div>
+  <div class="section"><h2>Toate datele zonei, după comasare</h2>${indicatorsHtml(st)}</div>
+  ${colorToggle()}
+  ${ipotezeHtml()}
+  <div class="row"><button class="btn" id="dl" data-label="Descarcă CSV">Descarcă CSV</button><button class="btn" id="cp" data-label="Copiază tabelul">Copiază tabelul</button><button class="btn" id="share" data-label="Copiază linkul zonei">Copiază linkul zonei</button></div>`;
 }
 function editHtml(){
   ensureGroups();
+  const og=onlyGroup(); if(og) return onlyHtml(og);
+  S.only=false;
   const gs=groups(), units=areaUnits(), pair=pairOn();
   const covered=new Set(gs.flatMap(g=>[...g.members]));
   const cross=gs.filter(g=>new Set([...g.members].map(k=>byKey.get(k).cc)).size>1).length;
   return `${ccSelect("ccE",S.wcc,false,"Județul")}
     <div class="ccsel"><label class="note" for="ccE2">Comasări cu un județ vecin</label><select id="ccE2"><option value="">Doar județul ${esc(JUD[S.wcc])}</option>${nbrCCs(S.wcc).map(c=>`<option value="${c}" ${pair&&c===S.wcc2?"selected":""}>${esc(JUD[S.wcc])} + ${esc(JUD[c])}</option>`).join("")}</select></div>
-    <p class="hint">Alege o grupare din listă, apoi atinge comunele pe hartă ca să le adaugi sau să le scoți. Fără grupare activă, un clic pornește o grupare nouă. ${pair?`Lucrezi pe <b>${esc(areaName())}</b>: o grupare poate lua comune și orașe din ambele județe, peste graniță.${cross?` <b>${cross}</b> ${cross===1?"grupare trece":"grupări trec"} granița.`:""} Atingerea unei localități din alt județ schimbă zona de lucru.`:"Atingerea unei localități din alt județ schimbă județul de lucru. Ca să unești localități din două județe vecine (de exemplu Brăila și Galați), alege județul vecin mai sus."}</p>
+    <p class="hint">Alege o grupare din listă, apoi atinge comunele pe hartă ca să le adaugi sau să le scoți. Fără grupare activă, un clic pornește o grupare nouă. Cu butonul <b>„Arată doar zona aceasta”</b> de pe gruparea aleasă, harta și cifrele rămân doar pentru ea. ${pair?`Lucrezi pe <b>${esc(areaName())}</b>: o grupare poate lua comune și orașe din ambele județe, peste graniță.${cross?` <b>${cross}</b> ${cross===1?"grupare trece":"grupări trec"} granița.`:""} Atingerea unei localități din alt județ schimbă zona de lucru.`:"Atingerea unei localități din alt județ schimbă județul de lucru. Ca să unești localități din două județe vecine (de exemplu Brăila și Galați), alege județul vecin mai sus."}</p>
     <div class="row"><button class="btn primary" id="b5">Propunerea (${fmt(S.sumT)} loc./zonă)</button>${S.wcc==="BR"&&!pair?`<button class="btn" id="bo">Propunerea anterioară (5 UAT)</button>`:""}<button class="btn" id="bs">Fiecare UAT separat</button><button class="btn" id="bn">Grupare nouă</button></div>
     ${totalsHtml(gs)}
     ${colorToggle()}
@@ -846,7 +905,7 @@ function stateHash(){
   const m=MODE2H[S.mode]; let parts=[m];
   if(S.mode==="summary"){ if(S.cc) parts.push(S.cc); parts.push(S.sumT); }
   else if(S.mode==="actual"){ if(S.cc) parts.push(S.cc); }
-  else if(S.mode==="edit") parts.push(areaCCs().join("+"));
+  else if(S.mode==="edit"){ parts.push(areaCCs().join("+")); const og=onlyGroup(); if(og){ const st=gStats(og); parts.push("z"+membersSeatFirst(og.members,st.seat).map(u=>u.key).join("-")); } }
   else if(S.mode==="auto") parts.push(S.wcc);
   else if(S.mode==="reg"){ parts.push(S.reg.v); parts.push(S.sumT); }
   return "#"+parts.join("/");
@@ -864,7 +923,7 @@ function barUrl(){ const s=shareSlug(); return (s?`${s}.html`:"./")+stateHash();
 function viewTitle(){
   if(S.mode==="summary") return S.cc ? `${JUD[S.cc]}: zone de cel puțin ${fmt(S.sumT)} locuitori – România 2028` : `România: zone de cel puțin ${fmt(S.sumT)} locuitori – România 2028`;
   if(S.mode==="actual") return `${S.cc?JUD[S.cc]:"România"}: situația primăriilor azi – România 2028`;
-  if(S.mode==="edit") return `${areaName()}: zone construite – România 2028`;
+  if(S.mode==="edit"){ const og=onlyGroup(); if(og){ const st=gStats(og); return `Zona ★ ${byKey.get(st.seat).name} (${st.n} UAT, ${fmt(st.pop)} loc.) – România 2028`; } return `${areaName()}: zone construite – România 2028`; }
   if(S.mode==="auto") return `${JUD[S.wcc]}: zone construite – România 2028`;
   if(S.mode==="reg") return `Regionalizare: ${S.reg.v==="custom"?"varianta proprie":REG.variante.find(v=>v.id===S.reg.v).name} – România 2028`;
   return "Surse și metodologie – România 2028";
@@ -876,6 +935,7 @@ function applyHash(h){
   for(const x of p.slice(1)){
     if(/^\d+$/.test(x)&&PRAGURI.includes(+x)) S.sumT=+x;
     else if(CCS.includes(x)){ if(S.mode==="edit"||S.mode==="auto"){ S.wcc2=null; S.wcc=x; } else S.cc=x; }
+    else if(S.mode==="edit"&&/^z\d+(-\d+)*$/.test(x)) S.pendingZone=x.slice(1).split("-");
     else if(S.mode==="edit"&&/^[A-Z]{1,2}\+[A-Z]{1,2}$/.test(x)){ const [a,b]=x.split("+"); if(CCS.includes(a)&&CCS.includes(b)){ S.wcc=a; S.wcc2=b; } }
     else if(S.mode==="reg"&&(REG.variante.some(v=>v.id===x)||x==="custom")) S.reg.v = x==="custom"&&!S.reg.custom.length ? "dev" : x;
   }
@@ -922,6 +982,8 @@ function bind(){
   const bo=$("#bo"); if(bo) bo.onclick=()=>presetGroups(mkZones("BR",PRESET_VECHI_BR));
   const bs=$("#bs"); if(bs) bs.onclick=()=>{ singletons(); S.activeGroup=null; clearCaches(); save(); restyle(); render(); };
   const bn=$("#bn"); if(bn) bn.onclick=()=>{ const gs=groups(); const g={id:"n"+Date.now().toString(36),name:"Grupare nouă",color:PALETTE[gs.length%PALETTE.length],members:new Set()}; gs.push(g); S.activeGroup=g.id; render(); };
+  const oo=$("#onlyOff"); if(oo) oo.onclick=()=>{ S.only=false; render(); restyle(); fitFocus(); };
+  $$("[data-only]").forEach(b=>b.onclick=e=>{ e.stopPropagation(); S.only=true; render(); restyle(); fitFocus(); panel.scrollTop=0; });
   $$(".group[data-g]").forEach(el=>{ el.onclick=e=>{ if(e.target.closest("[data-stop]")) return;
     if(S.mode==="edit"){ S.activeGroup=S.activeGroup===el.dataset.g?null:el.dataset.g; restyle(); render(); }
     else { S.openGroup=S.openGroup===el.dataset.g?null:el.dataset.g; render(); } }; });
@@ -938,7 +1000,7 @@ function bind(){
   if(S.mode==="reg"){ bindReg($,$$); return; }
   /* export */
   const dl=$("#dl"), cp=$("#cp");
-  const exp=()=>S.mode==="summary"?scenarioCSV(countyZones(S.cc,S.sumT)):scenarioCSV(groups());
+  const exp=()=>S.mode==="summary"?scenarioCSV(countyZones(S.cc,S.sumT)):onlyGroup()?scenarioCSV([onlyGroup()]):scenarioCSV(groups());
   const fname=()=>`scenariu_${S.mode==="summary"?norm(JUD[S.cc]):areaCCs().map(c=>norm(JUD[c])).join("_")}.csv`;
   if(dl) dl.onclick=()=>download(fname(),exp());
   if(cp) cp.onclick=()=>copy(exp(),cp);
