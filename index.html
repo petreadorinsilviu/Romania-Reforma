@@ -911,7 +911,10 @@ function stateHash(){
   return "#"+parts.join("/");
 }
 /* Paginile de distribuire (în rădăcina proiectului, fiecare cu poza ei .jpg): au titlul și poza vederii respective, ca Facebook să le arate corect */
+/* Zone construite care au pagină proprie de distribuire (cu poza ei .jpg) */
+const SHARE_ZONES={"#zone/BR+GL/z44391-75098-42682-75150-77331-42708-77224-75114-44560":"metropola-braila-galati"};
 function shareSlug(){
+  if(S.mode==="edit"&&SHARE_ZONES[stateHash()]) return SHARE_ZONES[stateHash()];
   if(S.mode==="summary") return S.cc ? `judet-${norm(JUD[S.cc])}-${S.sumT}` : `tara-${S.sumT}`;
   if(S.mode==="reg" && S.reg.v!=="custom") return `regiuni-${S.reg.v}-${S.sumT}`;
   return null;
